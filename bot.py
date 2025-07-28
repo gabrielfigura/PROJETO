@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %
 # Histórico e estado
 historico = []
 ultimo_padrao_id = None
-ultimo_resultado_id = None
+ultimo_resultado_id = None  # Inicialização explícita
 placar = {"✅": 0, "❌": 0}
 sinal_ativo = None  # Armazena o último sinal enviado e seu ID
 
@@ -186,7 +186,7 @@ async def monitorar_resultado(sinal, padrao_id):
     global ultimo_resultado_id
     while True:
         resultado, resultado_id, player_score, banker_score = await fetch_resultado()
-        if resultado and resultado_id and resultado_id != ultimo_resultado_id:
+        if resultado and resultado_id and (ultimo_resultado_id is None or resultado_id != ultimo_resultado_id):
             ultimo_resultado_id = resultado_id
             is_tie = (resultado == "🟡")
             await enviar_resultado(sinal, player_score, banker_score, is_tie)
@@ -195,7 +195,7 @@ async def monitorar_resultado(sinal, padrao_id):
 
 async def main():
     """Loop principal do bot."""
-    global historico, ultimo_padrao_id, sinal_ativo
+    global historico, ultimo_padrao_id, ultimo_resultado_id, sinal_ativo
     asyncio.create_task(enviar_relatorio())  # Iniciar relatório periódico
 
     while True:
@@ -204,7 +204,7 @@ async def main():
             await asyncio.sleep(5)
             continue
 
-        if resultado_id != ultimo_resultado_id:
+        if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
             historico.append(resultado)
             historico = historico[-10:]  # Limita histórico a 10
             ultimo_resultado_id = resultado_id
