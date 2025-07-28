@@ -150,6 +150,7 @@ async def enviar_resultado(sinal, resultado, player_score, banker_score, resulta
     try:
         # Verifica todos os sinais ativos e valida com o resultado correspondente
         for sinal_ativo in sinais_ativos[:]:
+            logging.debug(f"Verificando sinal ativo: ID {sinal_ativo['resultado_id']}, Sinal {sinal_ativo['sinal']}, Resultado atual: {resultado}")
             if sinal_ativo["resultado_id"] == resultado_id:
                 resultado_texto = f"🎲 Resultado: "
                 if resultado == "🟡":
@@ -166,8 +167,9 @@ async def enviar_resultado(sinal, resultado, player_score, banker_score, resulta
 
                 msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}): {mensagem_validacao}\nPlacar: {placar} acertos"
                 await bot.send_message(chat_id=CHAT_ID, text=msg)
-                logging.info(f"Resultado enviado: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}, Placar: {placar}")
+                logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}, Placar: {placar}")
                 sinais_ativos.remove(sinal_ativo)
+                break  # Para evitar múltiplas validações para o mesmo resultado_id
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
@@ -201,14 +203,7 @@ async def monitorar_resultado():
                 if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
                     ultimo_resultado_id = resultado_id
                     logging.info(f"Novo resultado detectado: ID {resultado_id}, Resultado {resultado}, Player {player_score}, Banker {banker_score}, Sinais ativos: {len(sinais_ativos)}")
-                    
-                    for sinal_ativo in sinais_ativos[:]:
-                        if sinal_ativo["resultado_id"] == resultado_id:
-                            await enviar_resultado(sinal_ativo["sinal"], resultado, player_score, banker_score, resultado_id)
-                            break
-                        elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 120:  # Timeout de 120 segundos
-                            logging.warning(f"Timeout de 120s para sinal: Padrão {sinal_ativo['padrao_id']}, Resultado ID {sinal_ativo['resultado_id']}")
-                            sinais_ativos.remove(sinal_ativo)
+                    await enviar_resultado(sinal=None, resultado=resultado, player_score=player_score, banker_score=banker_score, resultado_id=resultado_id)
                 else:
                     logging.debug(f"Resultado repetido: ID {resultado_id}")
             elif not resultado and resultado_id:
