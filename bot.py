@@ -141,7 +141,7 @@ Entrar: {sinal}
 ⏳ Aposte agora!"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
         logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}")
-        sinais_ativos.append({"sinal": sinal, "padrao_id": padrao_id, "resultado_id": resultado_id, "sequencia": sequencia})
+        sinais_ativos.append({"sinal": sinal, "padrao_id": padrao_id, "resultado_id": resultado_id, "sequencia": sequencia, "enviado_em": asyncio.get_event_loop().time()})
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
         raise
@@ -170,6 +170,10 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                 msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}, Sequência: {sequencia_str}): {mensagem_validacao}\nPlacar: {placar['✅']}✅ | {placar['❌']}❌"
                 await bot.send_message(chat_id=CHAT_ID, text=msg)
                 logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
+                sinais_ativos.remove(sinal_ativo)
+            # Limpar sinais obsoletos (mais de 5 minutos sem validação)
+            elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 300:
+                logging.warning(f"Sinal obsoleto removido: Padrão {sinal_ativo['padrao_id']}, Resultado ID: {sinal_ativo['resultado_id']}")
                 sinais_ativos.remove(sinal_ativo)
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
@@ -212,12 +216,15 @@ async def main():
                 for padrao in padroes_ordenados:
                     seq = padrao["sequencia"]
                     if len(historico) >= len(seq) and historico[-len(seq):] == seq and padrao["id"] != ultimo_padrao_id:
-                        await enviar_sinal(padroes=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=seq)
+                        await enviar_sinal(sinal=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=seq)
                         ultimo_padrao_id = padrao["id"]
                         break
 
                 if len(historico) >= 5:
                     ultimo_padrao_id = None
+
+            else:
+                logging.debug(f"Resultado repetido ignorado: ID {resultado_id}")
 
             await asyncio.sleep(2)
         except Exception as e:
