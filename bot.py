@@ -33,6 +33,8 @@ PADROES = [
     {"id": 11, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "acao": "Seguir alternância dupla", "aposta": "🔴"},
     {"id": 12, "sequencia": ["🔵", "🔴", "🟡"], "acao": "Seguir após empate", "aposta": "🔴"},
     {"id": 13, "sequencia": ["🔵", "🔵", "🟡", "🔵"], "acao": "Seguir após empate azul", "aposta": "🔵"},
+    {"id": 14, "sequencia": ["🟡", "🔵"], "acao": "Seguir após empate", "aposta": "🔵"},
+    {"id": 15, "sequencia": ["🔵", "🔴"], "acao": "Seguir alternância curta", "aposta": "🔴"},
 ]
 
 historico_resultados = []
@@ -174,8 +176,8 @@ def calcular_unidades_gale(historico_sinais, resultado_atual):
 
 def prever_padroes(historico):
     """Preve padrões com 1 rodada de antecedência."""
-    print(f"Histórico atual: {historico[-10:]}")
-    logging.info(f"Histórico atual: {historico[-10:]}")
+    print(f"Histórico atual (comprimento: {len(historico)}): {historico[-10:]}")
+    logging.info(f"Histórico atual (comprimento: {len(historico)}): {historico[-10:]}")
     if len(historico) < 2:
         return None
     for padrao in PADROES:
@@ -283,7 +285,7 @@ async def iniciar_monitoramento():
                         logging.info(f"Duração da rodada: {duracao_rodada:.1f}s, Média: {duracao_media_rodada:.1f}s")
 
                 # Adicionar resultado ao histórico se for nova rodada ou forçar progresso
-                if resultado and (rodada_id != ultima_rodada_id or consultas_sem_nova_rodada > 300):
+                if resultado and (rodada_id != ultima_rodada_id or consultas_sem_nova_rodada > 100):  # Reduzido para 10s
                     ultima_rodada_id = rodada_id
                     consultas_sem_nova_rodada = 0
                     if resultado != ultimo_resultado:
