@@ -86,9 +86,9 @@ async def fetch_resultado():
 
 async def enviar_sinal(sinal):
     try:
-        mensagem = f"🎯 SINAL ENCONTRADO
+        mensagem = f"""🎯 SINAL ENCONTRADO
 Entrar: {sinal}
-⏳ Aposte agora!"
+⏳ Aposte agora!"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
@@ -97,9 +97,9 @@ async def enviar_resultado(sinal, real):
     try:
         resultado = "✅" if sinal == real else "❌"
         placar[resultado] += 1
-        msg = f"🎲 Resultado: {real}
+        msg = f"""🎲 Resultado: {real}
 📊 Resultado do sinal: {resultado}
-Placar: {placar['✅']}✅ | {placar['❌']}❌"
+Placar: {placar['✅']}✅ | {placar['❌']}❌"""
         await bot.send_message(chat_id=CHAT_ID, text=msg)
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
