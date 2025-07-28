@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %
 historico = []
 ultimo_padrao_id = None
 ultimo_resultado_id = None
-placar = {"✅": 0, "❌": 0}
+placar = 0  # Placar de acertos seguidos
 sinais_ativos = []
 
 # Mapeamento de outcomes para emojis
@@ -144,9 +144,18 @@ Entrar: {sinal}
         logging.error(f"Erro ao enviar sinal: {e}")
         raise
 
-async def enviar_resultado(sinal, resultado, player_score, banker_score, resultado_id):
-    """Envia a validação de cada sinal ao Telegram."""
+def validar_sinal(sinal_enviado, resultado_final):
+    """Valida o sinal e atualiza o placar."""
     global placar
+    if resultado_final == sinal_enviado or resultado_final == "🟡":  # Adaptação para usar o emoji "Tie"
+        placar += 1
+        return f"ENTROU DINHEIRO🤑🤌\n✅ Placar: {placar} acertos seguidos"
+    else:
+        placar = 0
+        return "NÃO FOI DESSA🤧\n❌ Placar zerado"
+
+async def enviar_resultado(sinal, resultado, player_score, banker_score, resultado_id):
+    """Envia a validação de cada sinal ao Telegram usando a função validar_sinal."""
     try:
         # Verifica todos os sinais ativos e valida com o resultado correspondente
         for sinal_ativo in sinais_ativos[:]:
@@ -157,16 +166,10 @@ async def enviar_resultado(sinal, resultado, player_score, banker_score, resulta
                 else:
                     resultado_texto += f"AZUL: {player_score} VS VERMELHO: {banker_score}"
 
-                if resultado == sinal_ativo["sinal"]:
-                    resultado_sinal = "✅ ENTROU DINHEIRO🤑🤌"
-                    placar["✅"] += 1
-                else:
-                    resultado_sinal = "❌ NÃO FOI DESSA🤧"
-                    placar["✅"] = 0
-
-                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}): {resultado_sinal}\nPlacar: {placar['✅']}✅"
+                mensagem_validacao = validar_sinal(sinal_ativo["sinal"], resultado)
+                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}): {mensagem_validacao}"
                 await bot.send_message(chat_id=CHAT_ID, text=msg)
-                logging.info(f"Resultado enviado: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Player {player_score}, Banker {banker_score}, Resultado {resultado_sinal}")
+                logging.info(f"Resultado enviado: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Player {player_score}, Banker {banker_score}, Validação: {mensagem_validacao}")
                 sinais_ativos.remove(sinal_ativo)
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
@@ -175,9 +178,8 @@ async def enviar_relatorio():
     """Envia um relatório periódico da taxa de acertos."""
     while True:
         try:
-            total = placar["✅"] + placar["❌"]
-            taxa_acerto = (placar["✅"] / total * 100) if total > 0 else 0
-            msg = f"📈 Relatório: {taxa_acerto:.2f}% de acertos ({placar['✅']}✅ | {placar['❌']}❌)"
+            total = placar  # Apenas acertos seguidos, sem "❌" explícito
+            msg = f"📈 Relatório: {placar} acertos seguidos"
             await bot.send_message(chat_id=CHAT_ID, text=msg)
             logging.info(f"Relatório enviado: {msg}")
         except TelegramError as e:
@@ -187,9 +189,9 @@ async def enviar_relatorio():
 async def enviar_placar():
     """Envia o placar atual de acertos."""
     try:
-        msg = f"Placar: {placar['✅']}✅"
+        msg = f"Placar: {placar}✅"
         await bot.send_message(chat_id=CHAT_ID, text=msg)
-        logging.info(f"Placar enviado: {placar['✅']}✅")
+        logging.info(f"Placar enviado: {placar}✅")
     except TelegramError as e:
         logging.error(f"Erro ao enviar placar: {e}")
 
