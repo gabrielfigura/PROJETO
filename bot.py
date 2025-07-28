@@ -21,6 +21,14 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %
 historico = []
 ultimo_padrao_id = None
 placar = {"✅": 0, "❌": 0}
+ultimo_resultado_id = None  # Para evitar duplicatas
+
+# Mapeamento de outcomes para emojis
+OUTCOME_MAP = {
+    "PlayerWon": "🔵",
+    "BankerWon": "🔴",
+    "Tie": "🟡"
+}
 
 # Padrões
 PADROES = [
@@ -78,45 +86,57 @@ PADROES = [
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def fetch_resultado():
+    global ultimo_resultado_id
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(API_URL, timeout=10) as response:
                 # Verificar status da resposta
                 if response.status != 200:
                     logging.error(f"Erro na API: Status {response.status}, Resposta: {await response.text()}")
-                    return None
+                    return None, None
                 
                 # Obter e logar a resposta JSON
                 data = await response.json()
                 logging.debug(f"Resposta da API: {data}")
                 
-                # Verificar se a chave 'result' existe
-                if 'result' not in data:
-                    logging.error(f"Chave 'result' não encontrada na resposta: {data}")
-                    return None
+                # Verificar chaves aninhadas
+                if 'data' not in data:
+                    logging.error(f"Chave 'data' não encontrada na resposta: {data}")
+                    return None, None
+                if 'result' not in data['data']:
+                    logging.error(f"Chave 'result' não encontrada em 'data': {data['data']}")
+                    return None, None
+                if 'outcome' not in data['data']['result']:
+                    logging.error(f"Chave 'outcome' não encontrada em 'result': {data['data']['result']}")
+                    return None, None
+                if 'id' not in data:
+                    logging.error(f"Chave 'id' não encontrada na resposta: {data}")
+                    return None, None
                 
-                # Verificar se a chave 'outcome' existe
-                if 'outcome' not in data['result']:
-                    logging.error(f"Chave 'outcome' não encontrada em 'result': {data['result']}")
-                    return None
+                # Verificar status do jogo
+                if data['data'].get('status') != 'Resolved':
+                    logging.warning(f"Jogo não resolvido: Status {data['data'].get('status')}")
+                    return None, None
                 
-                resultado = data['result']['outcome']
+                resultado_id = data['id']
+                outcome = data['data']['result']['outcome']
                 
-                # Validar resultado
-                if resultado not in ["🔴", "🔵", "🟡"]:
-                    logging.error(f"Resultado inválido: {resultado}")
-                    return None
+                # Mapear outcome para emoji
+                if outcome not in OUTCOME_MAP:
+                    logging.error(f"Outcome inválido: {outcome}")
+                    return None, None
+                resultado = OUTCOME_MAP[outcome]
                 
-                return resultado
+                return resultado, resultado_id
         except aiohttp.ClientError as e:
             logging.error(f"Erro de conexão com a API: {e}")
-            return None
+            return None, None
         except ValueError as e:
             logging.error(f"Erro ao parsear JSON: {e}")
-            return None
+            return None, None
         except Exception as e:
             logging.error(f"Erro inesperado ao buscar resultado: {e}")
-            return None
+            return None, None
 
 async def enviar_sinal(sinal, padrao_id):
     try:
@@ -154,23 +174,23 @@ async def enviar_relatorio():
         await asyncio.sleep(3600)  # Enviar a cada hora
 
 async def main():
-    global historico, ultimo_padrao_id
+    global historico, ultimo_padrao_id, ultimo_resultado_id
     asyncio.create_task(enviar_relatorio())  # Iniciar relatório periódico
-    last_result_id = None  # Para evitar resultados duplicados
 
     while True:
-        resultado = await fetch_resultado()
-        if not resultado:
+        resultado, resultado_id = await fetch_resultado()
+        if not resultado or not resultado_id:
             await asyncio.sleep(5)
             continue
 
-        # Evitar duplicatas usando o próprio resultado
-        if not historico or historico[-1] != resultado:
+        # Evitar duplicatas com base no ID
+        if resultado_id != ultimo_resultado_id:
             historico.append(resultado)
             historico = historico[-10:]  # Limita histórico a 10
-            logging.info(f"Histórico atualizado: {historico}")
+            ultimo_resultado_id = resultado_id
+            logging.info(f"Histórico atualizado: {historico} (ID: {resultado_id})")
 
-            # Ordenar padrões por tamanho (maior primeiro) para priorizar padrões mais longos
+            # Ordenar padrões por tamanho (maior primeiro)
             padroes_ordenados = sorted(PADROES, key=lambda x: len(x["sequencia"]), reverse=True)
             for padrao in padroes_ordenados:
                 seq = padrao["sequencia"]
@@ -180,12 +200,12 @@ async def main():
                     ultimo_padrao_id = padrao["id"]
 
                     await asyncio.sleep(18)  # Tempo para o próximo resultado
-                    novo_resultado = await fetch_resultado()
+                    novo_resultado, _ = await fetch_resultado()
                     if novo_resultado:
                         await enviar_resultado(sinal, novo_resultado)
                     break
 
-        # Resetar ultimo_padrao_id após 5 resultados para permitir repetição de padrões relevantes
+        # Resetar ultimo_padrao_id após 5 resultados
         if len(historico) >= 5:
             ultimo_padrao_id = None
 
