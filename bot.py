@@ -36,8 +36,8 @@ OUTCOME_MAP = {
 
 # Padrões (filtrados para sequências com 3 ou mais resultados)
 PADROES = [
- {"id": 10, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
-{"id": 11, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
+ {"id": 10, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔴"},
+{"id": 11, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔵"},
 {"id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
 {"id": 14, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
 {"id": 15, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
