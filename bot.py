@@ -14,14 +14,15 @@ API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/late
 # Inicializar o bot
 bot = Bot(token=BOT_TOKEN)
 
-# Setup de logging
+# Configuração de logging
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Histórico de resultados
+# Histórico e estado
 historico = []
 ultimo_padrao_id = None
+ultimo_resultado_id = None
 placar = {"✅": 0, "❌": 0}
-ultimo_resultado_id = None  # Para evitar duplicatas
+sinal_ativo = None  # Armazena o último sinal enviado e seu ID
 
 # Mapeamento de outcomes para emojis
 OUTCOME_MAP = {
@@ -86,59 +87,51 @@ PADROES = [
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def fetch_resultado():
-    global ultimo_resultado_id
+    """Busca o resultado mais recente da API e retorna o emoji mapeado e os dados brutos."""
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(API_URL, timeout=10) as response:
-                # Verificar status da resposta
                 if response.status != 200:
                     logging.error(f"Erro na API: Status {response.status}, Resposta: {await response.text()}")
-                    return None, None
-                
-                # Obter e logar a resposta JSON
+                    return None, None, None, None
                 data = await response.json()
                 logging.debug(f"Resposta da API: {data}")
                 
-                # Verificar chaves aninhadas
-                if 'data' not in data:
-                    logging.error(f"Chave 'data' não encontrada na resposta: {data}")
-                    return None, None
-                if 'result' not in data['data']:
-                    logging.error(f"Chave 'result' não encontrada em 'data': {data['data']}")
-                    return None, None
-                if 'outcome' not in data['data']['result']:
-                    logging.error(f"Chave 'outcome' não encontrada em 'result': {data['data']['result']}")
-                    return None, None
+                if 'data' not in data or 'result' not in data['data'] or 'outcome' not in data['data']['result']:
+                    logging.error(f"Estrutura inválida na resposta: {data}")
+                    return None, None, None, None
                 if 'id' not in data:
                     logging.error(f"Chave 'id' não encontrada na resposta: {data}")
-                    return None, None
+                    return None, None, None, None
                 
-                # Verificar status do jogo
                 if data['data'].get('status') != 'Resolved':
-                    logging.warning(f"Jogo não resolvido: Status {data['data'].get('status')}")
-                    return None, None
+                    logging.debug(f"Jogo não resolvido: Status {data['data'].get('status')}")
+                    return None, None, None, None
                 
                 resultado_id = data['id']
                 outcome = data['data']['result']['outcome']
+                player_score = data['data']['result']['playerDice']['score']
+                banker_score = data['data']['result']['bankerDice']['score']
                 
-                # Mapear outcome para emoji
                 if outcome not in OUTCOME_MAP:
                     logging.error(f"Outcome inválido: {outcome}")
-                    return None, None
+                    return None, None, None, None
                 resultado = OUTCOME_MAP[outcome]
                 
-                return resultado, resultado_id
+                return resultado, resultado_id, player_score, banker_score
         except aiohttp.ClientError as e:
             logging.error(f"Erro de conexão com a API: {e}")
-            return None, None
+            return None, None, None, None
         except ValueError as e:
             logging.error(f"Erro ao parsear JSON: {e}")
-            return None, None
+            return None, None, None, None
         except Exception as e:
             logging.error(f"Erro inesperado ao buscar resultado: {e}")
-            return None, None
+            return None, None, None, None
 
 async def enviar_sinal(sinal, padrao_id):
+    """Envia uma mensagem de sinal ao Telegram."""
+    global sinal_ativo
     try:
         mensagem = f"""🎯 SINAL ENCONTRADO
 Padrão ID: {padrao_id}
@@ -146,22 +139,37 @@ Entrar: {sinal}
 ⏳ Aposte agora!"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
         logging.info(f"Sinal enviado: Padrão {padrao_id}, Sinal: {sinal}")
+        sinal_ativo = {"sinal": sinal, "padrao_id": padrao_id, "enviado_em": asyncio.get_event_loop().time()}
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
 
-async def enviar_resultado(sinal, real):
+async def enviar_resultado(sinal, player_score, banker_score, is_tie):
+    """Envia a validação do resultado ao Telegram com o novo formato."""
+    global placar
     try:
-        resultado = "✅" if sinal == real else "❌"
-        placar[resultado] += 1
-        msg = f"""🎲 Resultado: {real}
-📊 Resultado do sinal: {resultado}
-Placar: {placar['✅']}✅ | {placar['❌']}❌"""
+        resultado_texto = f"🎲 Resultado: "
+        if is_tie:
+            resultado_texto += f"EMPATE: {player_score}:{banker_score}"
+            resultado_sinal = "Entrou dinheiro🤑"  # Empate é considerado acerto
+            placar["✅"] += 1
+        else:
+            resultado_texto += f"AZUL: {player_score} VS VERMELHO: {banker_score}"
+            if OUTCOME_MAP[sinal] == sinal:
+                resultado_sinal = "Entrou dinheiro🤑"
+                placar["✅"] += 1
+            else:
+                resultado_sinal = "Não foi dessa🤧"
+                placar["✅"] = 0  # Zera o placar se errar
+                placar["❌"] = 0  # Reinicia erros também para consistência
+
+        msg = f"{resultado_texto}\n📊 Resultado do sinal: {resultado_sinal}\nPlacar: {placar['✅']}✅"
         await bot.send_message(chat_id=CHAT_ID, text=msg)
-        logging.info(f"Resultado enviado: Sinal {sinal}, Real {real}, Resultado {resultado}")
+        logging.info(f"Resultado enviado: Sinal {sinal}, Player {player_score}, Banker {banker_score}, Resultado {resultado_sinal}")
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
 async def enviar_relatorio():
+    """Envia um relatório periódico da taxa de acertos."""
     while True:
         try:
             total = placar["✅"] + placar["❌"]
@@ -173,17 +181,29 @@ async def enviar_relatorio():
             logging.error(f"Erro ao enviar relatório: {e}")
         await asyncio.sleep(3600)  # Enviar a cada hora
 
+async def monitorar_resultado(sinal, padrao_id):
+    """Monitora a API para validar o resultado após enviar o sinal."""
+    global ultimo_resultado_id
+    while True:
+        resultado, resultado_id, player_score, banker_score = await fetch_resultado()
+        if resultado and resultado_id and resultado_id != ultimo_resultado_id:
+            ultimo_resultado_id = resultado_id
+            is_tie = (resultado == "🟡")
+            await enviar_resultado(sinal, player_score, banker_score, is_tie)
+            break
+        await asyncio.sleep(5)  # Verifica a cada 5 segundos
+
 async def main():
-    global historico, ultimo_padrao_id, ultimo_resultado_id
+    """Loop principal do bot."""
+    global historico, ultimo_padrao_id, sinal_ativo
     asyncio.create_task(enviar_relatorio())  # Iniciar relatório periódico
 
     while True:
-        resultado, resultado_id = await fetch_resultado()
+        resultado, resultado_id, player_score, banker_score = await fetch_resultado()
         if not resultado or not resultado_id:
             await asyncio.sleep(5)
             continue
 
-        # Evitar duplicatas com base no ID
         if resultado_id != ultimo_resultado_id:
             historico.append(resultado)
             historico = historico[-10:]  # Limita histórico a 10
@@ -198,11 +218,7 @@ async def main():
                     sinal = padrao["sinal"]
                     await enviar_sinal(sinal, padrao["id"])
                     ultimo_padrao_id = padrao["id"]
-
-                    await asyncio.sleep(18)  # Tempo para o próximo resultado
-                    novo_resultado, _ = await fetch_resultado()
-                    if novo_resultado:
-                        await enviar_resultado(sinal, novo_resultado)
+                    asyncio.create_task(monitorar_resultado(sinal, padrao["id"]))  # Inicia monitoramento assíncrono
                     break
 
         # Resetar ultimo_padrao_id após 5 resultados
