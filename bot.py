@@ -15,7 +15,7 @@ API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/late
 bot = Bot(token=BOT_TOKEN)
 
 # Setup de logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Histórico de resultados
 historico = []
@@ -81,15 +81,42 @@ async def fetch_resultado():
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(API_URL, timeout=10) as response:
+                # Verificar status da resposta
+                if response.status != 200:
+                    logging.error(f"Erro na API: Status {response.status}, Resposta: {await response.text()}")
+                    return None
+                
+                # Obter e logar a resposta JSON
                 data = await response.json()
+                logging.debug(f"Resposta da API: {data}")
+                
+                # Verificar se a chave 'result' existe
+                if 'result' not in data:
+                    logging.error(f"Chave 'result' não encontrada na resposta: {data}")
+                    return None
+                
+                # Verificar se a chave 'outcome' existe
+                if 'outcome' not in data['result']:
+                    logging.error(f"Chave 'outcome' não encontrada em 'result': {data['result']}")
+                    return None
+                
                 resultado = data['result']['outcome']
+                
+                # Validar resultado
                 if resultado not in ["🔴", "🔵", "🟡"]:
                     logging.error(f"Resultado inválido: {resultado}")
                     return None
+                
                 return resultado
+        except aiohttp.ClientError as e:
+            logging.error(f"Erro de conexão com a API: {e}")
+            return None
+        except ValueError as e:
+            logging.error(f"Erro ao parsear JSON: {e}")
+            return None
         except Exception as e:
-            logging.error(f"Erro ao buscar resultado: {e}")
-            raise
+            logging.error(f"Erro inesperado ao buscar resultado: {e}")
+            return None
 
 async def enviar_sinal(sinal, padrao_id):
     try:
@@ -137,8 +164,7 @@ async def main():
             await asyncio.sleep(5)
             continue
 
-        # Evitar duplicatas usando um identificador único (se disponível)
-        # Como a API não fornece ID, usamos o próprio resultado
+        # Evitar duplicatas usando o próprio resultado
         if not historico or historico[-1] != resultado:
             historico.append(resultado)
             historico = historico[-10:]  # Limita histórico a 10
