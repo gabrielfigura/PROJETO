@@ -1,6 +1,7 @@
 import requests
 import json
 import time
+import asyncio
 from telegram import Bot
 from telegram.error import TelegramError
 import logging
@@ -108,7 +109,7 @@ def verificar_padroes(historico):
             return padrao
     return None
 
-def enviar_sinal(padrao):
+async def enviar_sinal(padrao):
     try:
         mensagem = f"""
 📊 *Sinal Detectado*
@@ -116,16 +117,16 @@ Padrão #{padrao['id']}
 Sequência: {' '.join(padrao['sequencia'])}
 🎯 Ação: *{padrao['acao']}*
 """
-        bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
+        await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
         logging.info(f"Sinal enviado: Padrão #{padrao['id']}")
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
 
-def iniciar_monitoramento():
+async def iniciar_monitoramento():
     logging.info("Iniciando monitoramento")
     try:
         # Verificar se o bot está funcional
-        bot.get_me()
+        await bot.get_me()
         logging.info("Bot inicializado com sucesso")
     except TelegramError as e:
         logging.error(f"Erro ao inicializar bot: {e}")
@@ -144,9 +145,9 @@ def iniciar_monitoramento():
 
                 padrao = verificar_padroes(historico_resultados)
                 if padrao:
-                    enviar_sinal(padrao)
+                    await enviar_sinal(padrao)
 
-            time.sleep(3)
+            time.sleep(3)  # Mantido síncrono para evitar bloqueio
         except KeyboardInterrupt:
             logging.info("Monitoramento encerrado pelo usuário")
             break
@@ -155,4 +156,4 @@ def iniciar_monitoramento():
             time.sleep(10)  # Espera maior em caso de erro
 
 if __name__ == "__main__":
-    iniciar_monitoramento()
+    asyncio.run(iniciar_monitoramento())
