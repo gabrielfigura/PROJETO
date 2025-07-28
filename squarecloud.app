@@ -1,5 +1,5 @@
-{
-  "name": "CleverBacBoBot",
-  "language": "python",
-  "version": "3.11"
-}
+[APP]
+main=bot.py
+version=1.0
+name=TelegramCasinoBot
+memory=512
