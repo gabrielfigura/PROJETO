@@ -30,6 +30,8 @@ PADROES = [
     {"id": 8, "sequencia": ["🔴", "🔵", "🔵"], "acao": "Seguir nova cor", "aposta": "🔵"},
     {"id": 9, "sequencia": ["🔴", "🔴", "🟡"], "acao": "Seguir 🔴", "aposta": "🔴"},
     {"id": 10, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "acao": "Ignorar Tie e seguir 🔴", "aposta": "🔴"},
+    {"id": 11, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "acao": "Seguir alternância dupla", "aposta": "🔴"},
+    {"id": 12, "sequencia": ["🔵", "🔴", "🟡"], "acao": "Seguir após empate", "aposta": "🔴"},
 ]
 
 historico_resultados = []
@@ -278,7 +280,7 @@ async def iniciar_monitoramento():
                         logging.info(f"Duração da rodada: {duracao_rodada:.1f}s, Média: {duracao_media_rodada:.1f}s")
 
                 # Adicionar resultado ao histórico se for nova rodada ou forçar progresso
-                if resultado and (rodada_id != ultima_rodada_id or consultas_sem_nova_rodada > 300):  # Força progresso após 30s (~300 consultas a 0.1s)
+                if resultado and (rodada_id != ultima_rodada_id or consultas_sem_nova_rodada > 300):
                     ultima_rodada_id = rodada_id
                     consultas_sem_nova_rodada = 0
                     if resultado != ultimo_resultado:
@@ -314,7 +316,7 @@ async def iniciar_monitoramento():
                                 await bot.delete_message(chat_id=CHAT_ID, message_id=mensagem_id_gale)
                         elif etapa == "Inicial" and resultado_previo is None and aposta != resultado and resultado != "🟡":
                             mensagem_gale_id = await enviar_mensagem_gale()
-                            historico_sinais.append((padrao_id, aposta, 2, rodada_id, "Gale", None, mensagem_gale_id))
+                            historico_sinais.append((padrao_id, aposta, 2, rodada_id, "Gale", None, mensagem_id_gale))
                             print("Ativando 1 gale")
                             logging.info("Ativando 1 gale")
                         elif etapa == "Gale" and resultado_atual is None:
@@ -329,32 +331,10 @@ async def iniciar_monitoramento():
                 # Prever e enviar novo sinal com antecedência
                 if event_data.get('status') == 'Resolved':
                     tempo_atual = time.time()
-                    if tempo_atual - ultimo_sinal_enviado >= 90:
+                    if tempo_atual - ultimo_sinal_enviado >= 30:  # Reduzido para 30s
                         padrao = prever_padroes(historico_resultados)
                         if padrao:
                             forte = avaliar_forca_padrao(padrao, historico_resultados)
                             unidades = calcular_unidades_gale(historico_sinais, resultado)
                             historico_sinais.append((padrao['id'], padrao['aposta'], unidades, rodada_id, "Inicial", None, None))
-                            tempo_espera = max(0, duracao_media_rodada - 23 + 5)  # 23s estimado para apostas, 5-7s de antecedência
-                            print(f"Aguardando {tempo_espera:.1f}s para enviar sinal")
-                            await asyncio.sleep(tempo_espera)
-                            ultima_mensagem_espera_id = ultima_mensagem_espera
-                            ultimo_sinal_enviado = time.time()
-                            ultimo_sinal_rodada_id = rodada_id
-                            await enviar_sinal(padrao, unidades, placar, ultima_mensagem_espera_id, forte)
-                            if ultima_mensagem_espera_id:
-                                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_espera_id)
-                                ultima_mensagem_espera = None
-
-                # Enviar mensagem de espera se no intervalo
-                if tempo_atual - ultimo_sinal_enviado < 90 and not ultima_mensagem_espera and (tempo_atual - ultimo_sinal_enviado) % 10 < 1:
-                    ultima_mensagem_espera = await enviar_mensagem_espera()
-
-            await asyncio.sleep(0.1)  # Consulta contínua com pequeno delay
-        except Exception as e:
-            print(f"Erro no loop principal: {str(e)}")
-            logging.error(f"Erro no loop principal: {str(e)}")
-            await asyncio.sleep(10)
-
-if __name__ == "__main__":
-    asyncio.run(iniciar_monitoramento())
+                            tempo_espera = max(0, duracao_media_rodada - duracao
