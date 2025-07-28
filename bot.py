@@ -143,27 +143,26 @@ Entrar: {sinal}
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
 
-async def enviar_resultado(sinal, player_score, banker_score, is_tie):
-    """Envia a validação do resultado ao Telegram com o formato especificado."""
+async def enviar_resultado(sinal, resultado, player_score, banker_score):
+    """Envia a validação do resultado ao Telegram com a nova lógica."""
     global placar
     try:
         resultado_texto = f"🎲 Resultado: "
-        if is_tie:
+        if resultado == "🟡":
             resultado_texto += f"EMPATE: {player_score}:{banker_score}"
-            resultado_sinal = "Entrou dinheiro🤑"  # Empate é considerado acerto
-            placar["✅"] += 1
         else:
             resultado_texto += f"AZUL: {player_score} VS VERMELHO: {banker_score}"
-            if OUTCOME_MAP[sinal] == sinal:
-                resultado_sinal = "Entrou dinheiro🤑"
-                placar["✅"] += 1
-            else:
-                resultado_sinal = "Não foi dessa🤧"
-                placar["✅"] = 0  # Zera o placar de acertos em caso de erro
+
+        if resultado == sinal:
+            resultado_sinal = "✅ ENTROU DINHEIRO🤑🤌"
+            placar["✅"] += 1
+        else:
+            resultado_sinal = "❌ NÃO FOI DESSA🤧"
+            placar["✅"] = 0  # Zera o placar de acertos em caso de erro
 
         msg = f"{resultado_texto}\n📊 Resultado do sinal: {resultado_sinal}\nPlacar: {placar['✅']}✅"
         await bot.send_message(chat_id=CHAT_ID, text=msg)
-        logging.info(f"Resultado enviado: Sinal {sinal}, Player {player_score}, Banker {banker_score}, Resultado {resultado_sinal}")
+        logging.info(f"Resultado enviado: Sinal {sinal}, Resultado {resultado}, Player {player_score}, Banker {banker_score}, Resultado {resultado_sinal}")
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
@@ -200,13 +199,12 @@ async def monitorar_resultado(sinal, padrao_id):
         if resultado and resultado_id and (ultimo_resultado_id is None or resultado_id != ultimo_resultado_id):
             logging.debug(f"Monitorando: Novo resultado detectado - ID: {resultado_id}, Último ID: {ultimo_resultado_id}")
             ultimo_resultado_id = resultado_id
-            is_tie = (resultado == "🟡")
-            await enviar_resultado(sinal, player_score, banker_score, is_tie)
+            await enviar_resultado(sinal, resultado, player_score, banker_score)
             sinal_ativo = None  # Limpa o sinal ativo após validação
             break
         elif not resultado and resultado_id:
             logging.warning(f"Monitorando: Resultado inválido ou incompleto - ID: {resultado_id}")
-        await asyncio.sleep(2)  # Reduzido para 2 segundos para maior frequência em tempo real
+        await asyncio.sleep(2)  # Frequência de 2 segundos para tempo real
     if sinal_ativo:
         logging.error(f"Timeout de {max_wait_time}s atingido. Sinal {sinal} não validado.")
         sinal_ativo = None
@@ -219,7 +217,7 @@ async def main():
     while True:
         resultado, resultado_id, player_score, banker_score = await fetch_resultado()
         if not resultado or not resultado_id:
-            await asyncio.sleep(2)  # Reduzido para 2 segundos para maior frequência
+            await asyncio.sleep(2)  # Frequência de 2 segundos
             continue
 
         if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
@@ -244,7 +242,7 @@ async def main():
         if len(historico) >= 5:
             ultimo_padrao_id = None
 
-        await asyncio.sleep(2)  # Reduzido para 2 segundos para maior frequência
+        await asyncio.sleep(2)  # Frequência de 2 segundos
 
 if __name__ == "__main__":
     try:
