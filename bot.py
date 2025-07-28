@@ -21,7 +21,6 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %
 historico = []
 ultimo_padrao_id = None
 ultimo_resultado_id = None
-placar = 0  # Placar de acertos
 sinais_ativos = []
 
 # Mapeamento de outcomes para emojis
@@ -146,7 +145,6 @@ Entrar: {sinal}
 
 async def enviar_resultado(sinal, resultado, player_score, banker_score, resultado_id):
     """Envia a validação simples de cada sinal ao Telegram após o resultado."""
-    global placar
     try:
         # Verifica todos os sinais ativos e valida com o resultado correspondente
         for sinal_ativo in sinais_ativos[:]:
@@ -160,24 +158,22 @@ async def enviar_resultado(sinal, resultado, player_score, banker_score, resulta
 
                 if resultado == sinal_ativo["sinal"]:
                     mensagem_validacao = "ENTROU DINHEIRO🤑"
-                    placar += 1
                 else:
-                    mensagem_validacao = "PERDEMOS NESSA🤧"
-                    placar = 0
+                    mensagem_validacao = "NÃO FOI DESSA🤧"
 
-                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}): {mensagem_validacao}\nPlacar: {placar} acertos"
+                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}): {mensagem_validacao}"
                 await bot.send_message(chat_id=CHAT_ID, text=msg)
-                logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}, Placar: {placar}")
+                logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                 sinais_ativos.remove(sinal_ativo)
                 break  # Para evitar múltiplas validações para o mesmo resultado_id
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
 async def enviar_relatorio():
-    """Envia um relatório periódico da taxa de acertos."""
+    """Envia um relatório periódico (sem placar)."""
     while True:
         try:
-            msg = f"📈 Relatório: {placar} acertos seguidos"
+            msg = "📈 Relatório: Bot em operação"
             await bot.send_message(chat_id=CHAT_ID, text=msg)
             logging.info(f"Relatório enviado: {msg}")
         except TelegramError as e:
@@ -185,13 +181,8 @@ async def enviar_relatorio():
         await asyncio.sleep(3600)
 
 async def enviar_placar():
-    """Envia o placar atual de acertos."""
-    try:
-        msg = f"Placar: {placar}✅"
-        await bot.send_message(chat_id=CHAT_ID, text=msg)
-        logging.info(f"Placar enviado: {placar}✅")
-    except TelegramError as e:
-        logging.error(f"Erro ao enviar placar: {e}")
+    """Remove a função de enviar placar (não mais necessária)."""
+    pass
 
 async def monitorar_resultado():
     """Monitora a API em tempo real para validar todos os sinais ativos com timeout por sinal."""
@@ -236,7 +227,6 @@ async def main():
                 for padrao in padroes_ordenados:
                     seq = padrao["sequencia"]
                     if len(historico) >= len(seq) and historico[-len(seq):] == seq and padrao["id"] != ultimo_padrao_id:
-                        await enviar_placar()
                         sinal = padrao["sinal"]
                         await enviar_sinal(sinal, padrao["id"], resultado_id)
                         ultimo_padrao_id = padrao["id"]
