@@ -289,10 +289,10 @@ async def iniciar_monitoramento():
                         logging.info(f"Duração da rodada: {duracao_rodada:.1f}s, Média: {duracao_media_rodada:.1f}s")
 
                 # Adicionar resultado ao histórico se for nova rodada ou forçar progresso
-                if resultado and (rodada_id != ultima_rodada_id or consultas_sem_nova_rodada > 50):  # Reduzido para 5s
+                if resultado and (rodada_id != ultima_rodada_id or consultas_sem_nova_rodada > 50):
                     ultima_rodada_id = rodada_id
                     consultas_sem_nova_rodada = 0
-                    if resultado != ultimo_resultado or consultas_sem_nova_rodada > 50:
+                    if resultado != ultimo_resultado:
                         ultimo_resultado = resultado
                         historico_resultados.append(resultado)
                         print(f"Resultado: {resultado} (Rodada ID: {rodada_id})")
@@ -301,11 +301,12 @@ async def iniciar_monitoramento():
                             historico_resultados.pop(0)
                 else:
                     consultas_sem_nova_rodada += 1
-                    if consultas_sem_nova_rodada > 50 and not historico_resultados:  # Simular resultado se histórico vazio
+                    if consultas_sem_nova_rodada > 50:  # Forçar simulação após 5s
                         simulado = random.choice(["🔴", "🔵", "🟡"])
                         historico_resultados.append(simulado)
-                        print(f"Simulando resultado: {simulado} (Histórico vazio)")
-                        logging.info(f"Simulando resultado: {simulado} (Histórico vazio)")
+                        print(f"Simulando resultado: {simulado} (Consultas sem nova rodada: {consultas_sem_nova_rodada})")
+                        logging.info(f"Simulando resultado: {simulado} (Consultas sem nova rodada: {consultas_sem_nova_rodada})")
+                        ultima_rodada_id = None  # Reset para próxima simulação
 
                 # Validar o último sinal enviado
                 if historico_sinais and historico_sinais[-1][3] == rodada_id and event_data.get('status') == 'Resolved':
