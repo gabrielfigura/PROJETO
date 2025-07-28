@@ -34,7 +34,7 @@ OUTCOME_MAP = {
     "Tie": "🟡"
 }
 
-# Padrões (filtrados para sequências com 4 ou mais resultados)
+# Padrões (filtrados para sequências com 3 ou mais resultados)
 PADROES = [
 {"id": 10, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
 {"id": 11, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
@@ -51,7 +51,19 @@ PADROES = [
 {"id": 23, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"},
 {"id": 24, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
 {"id": 25, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
-{"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"}
+{"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+{"id": 27, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔴"},
+{"id": 28, "sequencia": ["🔵", "🔵", "🔵"], "sinal": "🔵"},
+{"id": 29, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵"},
+{"id": 30, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴"},
+{"id": 31, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔴"},
+{"id": 32, "sequencia": ["🔴", "🟡", "🔴"], "sinal": "🔴"},
+{"id": 33, "sequencia": ["🔵", "🟡", "🔵"], "sinal": "🔵"},
+{"id": 34, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔴"},
+{"id": 35, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
+{"id": 36, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
+{"id": 37, "sequencia": ["🔵", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+{"id": 38, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
