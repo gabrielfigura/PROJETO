@@ -5,6 +5,7 @@ import asyncio
 from telegram import Bot
 from telegram.error import TelegramError
 import logging
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Configuração de logging
 logging.basicConfig(filename='bot.log', level=logging.INFO, 
@@ -72,6 +73,7 @@ PADROES = [
 
 historico_resultados = []
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def obter_resultado():
     try:
         print("Tentando buscar resultado da API...")
@@ -83,13 +85,13 @@ def obter_resultado():
         if not dados:
             print("API retornou lista vazia")
             logging.error("API retornou lista vazia")
-            return None
+            return None, None
             
         latest_event = dados[0]
         if 'playerScore' not in latest_event or 'bankerScore' not in latest_event:
             print("Chaves playerScore ou bankerScore ausentes")
             logging.error("Chaves playerScore ou bankerScore ausentes")
-            return None
+            return None, None
 
         player_score = latest_event['playerScore']
         banker_score = latest_event['bankerScore']
@@ -97,19 +99,19 @@ def obter_resultado():
         logging.info(f"Player Score: {player_score}, Banker Score: {banker_score}")
 
         if player_score > banker_score:
-            return "🔴"
+            return "🔴", latest_event
         elif banker_score > player_score:
-            return "🔵"
+            return "🔵", latest_event
         else:
-            return "🟡"
+            return "🟡", latest_event
 
     except requests.exceptions.RequestException as e:
-        print(f"Erro ao buscar resultado: {e}")
-        logging.error(f"Erro ao buscar resultado: {e}")
-        return None
+        print(f"Erro ao buscar resultado: {str(e)}")
+        logging.error(f"Erro ao buscar resultado: {str(e)}")
+        raise  # Levanta exceção para o retry do tenacity
 
 def verificar_padroes(historico):
-    print(f"Histórico atual: {historico[-10:]}")  # Mostra os últimos 10 resultados
+    print(f"Histórico atual: {historico[-10:]}")
     logging.info(f"Histórico atual: {historico[-10:]}")
     for padrao in PADROES:
         sequencia = padrao["sequencia"]
@@ -132,28 +134,32 @@ Sequência: {' '.join(padrao['sequencia'])}
         await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
         logging.info(f"Sinal enviado: Padrão #{padrao['id']}")
     except TelegramError as e:
-        print(f"Erro ao enviar sinal: {e}")
-        logging.error(f"Erro ao enviar sinal: {e}")
+        print(f"Erro ao enviar sinal: {str(e)}")
+        logging.error(f"Erro ao enviar sinal: {str(e)}")
 
 async def iniciar_monitoramento():
     print("Iniciando monitoramento")
     logging.info("Iniciando monitoramento")
     try:
-        # Verificar se o bot está funcional
         print("Verificando conexão com o Telegram...")
         await bot.get_me()
         print("Bot inicializado com sucesso")
         logging.info("Bot inicializado com sucesso")
+        # Enviar mensagem de inicialização ao Telegram
+        await bot.send_message(chat_id=CHAT_ID, text="✅ Bot inicializado com sucesso!", parse_mode="Markdown")
     except TelegramError as e:
-        print(f"Erro ao inicializar bot: {e}")
-        logging.error(f"Erro ao inicializar bot: {e}")
+        print(f"Erro ao inicializar bot: {str(e)}")
+        logging.error(f"Erro ao inicializar bot: {str(e)}")
         return
 
     ultimo_resultado = None
     while True:
         try:
-            resultado = obter_resultado()
+            resultado, event_data = obter_resultado()
+            # Verificar se o resultado é válido (ignorar resultados incompletos)
             if resultado and resultado != ultimo_resultado:
+                # Aqui, idealmente, precisaríamos verificar o status da rodada
+                # Como a API não fornece, assumimos que o resultado é final
                 ultimo_resultado = resultado
                 historico_resultados.append(resultado)
                 print(f"Resultado: {resultado}")
@@ -165,14 +171,10 @@ async def iniciar_monitoramento():
                 if padrao:
                     await enviar_sinal(padrao)
 
-            time.sleep(3)  # Mantido síncrono para evitar bloqueio
-        except KeyboardInterrupt:
-            print("Monitoramento encerrado pelo usuário")
-            logging.info("Monitoramento encerrado pelo usuário")
-            break
+            time.sleep(5)  # Ajustado para 5 segundos
         except Exception as e:
-            print(f"Erro no loop principal: {e}")
-            logging.error(f"Erro no loop principal: {e}")
+            print(f"Erro no loop principal: {str(e)}")
+            logging.error(f"Erro no loop principal: {str(e)}")
             time.sleep(10)  # Espera maior em caso de erro
 
 if __name__ == "__main__":
