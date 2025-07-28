@@ -18,7 +18,7 @@ CHAT_ID = "-1002859771274"
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
 bot = Bot(token=BOT_TOKEN)
 
-# Lista de padrões atualizada com 10 novos padrões fortes e únicos
+# Lista de padrões
 PADROES = [
     {"id": 1, "sequencia": ["🔴", "🔴", "🔴"], "acao": "Entrar a favor", "aposta": "🔴"},
     {"id": 2, "sequencia": ["🔵", "🔴", "🔵"], "acao": "Entrar no oposto do último", "aposta": "🔴"},
@@ -70,13 +70,11 @@ PADROES = [
     {"id": 48, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴", "aposta": "🔴"},
     {"id": 49, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "acao": "Seguir padrão 2x", "aposta": "🔴"},
     {"id": 50, "sequencia": ["🔴", "🔴", "🟡", "🔵", "🔵", "🔴"], "acao": "Seguir 🔴", "aposta": "🔴"},
-    # Novos padrões curtos (3-4 resultados, únicos)
     {"id": 51, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "acao": "Alternância dupla", "aposta": "🔴"},
     {"id": 52, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "acao": "Inverter tendência", "aposta": "🔵"},
     {"id": 53, "sequencia": ["🔴", "🔴", "🟡", "🔴"], "acao": "Persistência após tie", "aposta": "🔴"},
     {"id": 54, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "acao": "Reversão após empate", "aposta": "🔴"},
     {"id": 55, "sequencia": ["🔴", "🔵", "🟡", "🔵"], "acao": "Mudança após tie", "aposta": "🔵"},
-    # Novos padrões longos (5+ resultados, únicos)
     {"id": 56, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵", "🔴"], "acao": "Alternância prolongada", "aposta": "🔵"},
     {"id": 57, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴", "🔵", "🔴"], "acao": "Dominância cíclica", "aposta": "🔴"},
     {"id": 58, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔴", "🔵", "🔵"], "acao": "Sequência resiliente", "aposta": "🔵"},
@@ -85,16 +83,47 @@ PADROES = [
 ]
 
 historico_resultados = []
-historico_sinais = []  # [(padrao_id, aposta, unidades, rodada_id, etapa, resultado)]
+historico_sinais = []  # [(padrao_id, aposta, unidades, rodada_id, etapa, resultado, mensagem_id_gale)]
 acertos = 0
 perdas = 0
 ultima_mensagem_espera = None
+ultimo_sinal_enviado = 0
+
+def avaliar_forca_padrao(padrao, historico):
+    """Avalia se o padrão é forte com base em frequência, consistência e tendência."""
+    if not historico or len(historico) < 20:
+        return False
+    sequencia = padrao["sequencia"]
+    aposta = padrao["aposta"]
+    tamanho = len(sequencia)
+
+    # Frequência recente (últimos 20 resultados)
+    historico_20 = historico[-20:]
+    ocorrencias = sum(1 for i in range(len(historico_20) - tamanho + 1) if historico_20[i:i + tamanho] == sequencia)
+    if ocorrencias < 2:  # Pelo menos 2 ocorrências recentes
+        return False
+
+    # Consistência (sem muitos ties ou alternâncias)
+    ties = historico_20.count("🟡")
+    alternancias = sum(1 for i in range(len(historico_20) - 1) if historico_20[i] != historico_20[i + 1] and historico_20[i] != "🟡" and historico_20[i + 1] != "🟡")
+    if ties / len(historico_20) > 0.2 or alternancias / len(historico_20) > 0.5:
+        return False
+
+    # Tendência dominante (últimos 10 resultados)
+    historico_10 = historico[-10:]
+    vermelho_count = historico_10.count("🔴")
+    azul_count = historico_10.count("🔵")
+    tendencia = "🔴" if vermelho_count > azul_count else "🔵"
+    if aposta != tendencia:
+        return False
+
+    return True
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def obter_resultado():
     try:
-        print("Tentando buscar resultado da API...")
-        logging.info("Tentando buscar resultado da API...")
+        print("Consultando API continuamente...")
+        logging.info("Consultando API continuamente...")
         headers = {"User-Agent": "Mozilla/5.0"}
         resposta = requests.get(API_URL, timeout=5, headers=headers)
         resposta.raise_for_status()
@@ -161,7 +190,7 @@ def verificar_resultado_sinal(sinal, resultado_atual):
     """Verifica se o sinal foi uma vitória, derrota ou empate."""
     if not sinal or not resultado_atual:
         return None
-    padrao_id, aposta, unidades, rodada_id, etapa, _ = sinal
+    padrao_id, aposta, unidades, rodada_id, etapa, _, _ = sinal
     if etapa == "Gale" and aposta == resultado_atual:
         return "Vitória no Gale"
     elif etapa == "Inicial" and aposta == resultado_atual:
@@ -198,7 +227,7 @@ def verificar_padroes(historico):
             return padrao
     return None
 
-async def enviar_sinal(padrao, unidades, placar, ultima_mensagem_espera_id):
+async def enviar_sinal(padrao, unidades, placar, ultima_mensagem_espera_id, forte=False):
     global ultima_mensagem_espera
     try:
         if ultima_mensagem_espera_id:
@@ -210,11 +239,11 @@ Padrão #{padrao['id']}
 Sequência: {' '.join(padrao['sequencia'])}
 🎯 Ação: *{padrao['acao']}*
 💰 Aposta: {padrao['aposta']} ({unidades} {'unidades' if unidades > 1 else 'unidade'})
-📈 Placar: Acertos: {placar['acertos']}, Perdas: {placar['perdas']}
+{'🔥 Padrão Forte 🔥' if forte else ''}
 """
-        print(f"Enviando sinal: Padrão #{padrao['id']}, Aposta: {padrao['aposta']} ({unidades} unidades)")
+        print(f"Enviando sinal: Padrão #{padrao['id']}, Aposta: {padrao['aposta']} ({unidades} unidades), Forte: {forte}")
         sent_message = await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
-        logging.info(f"Sinal enviado: Padrão #{padrao['id']}, Aposta: {padrao['aposta']} ({unidades} unidades)")
+        logging.info(f"Sinal enviado: Padrão #{padrao['id']}, Aposta: {padrao['aposta']} ({unidades} unidades), Forte: {forte}")
         return sent_message.message_id
     except TelegramError as e:
         print(f"Erro ao enviar sinal: {str(e)}")
@@ -235,8 +264,30 @@ async def enviar_mensagem_espera():
         logging.error(f"Erro ao enviar mensagem de espera: {str(e)}")
         return None
 
+async def enviar_mensagem_gale():
+    try:
+        mensagem = "Dobra a banca e vamos no 1 gale🎯"
+        print(f"Enviando mensagem de gale: {mensagem}")
+        sent_message = await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
+        logging.info(f"Mensagem de gale enviada: {mensagem}, ID: {sent_message.message_id}")
+        return sent_message.message_id
+    except TelegramError as e:
+        print(f"Erro ao enviar mensagem de gale: {str(e)}")
+        logging.error(f"Erro ao enviar mensagem de gale: {str(e)}")
+        return None
+
+async def enviar_placar(placar):
+    try:
+        mensagem = f"📈 *Placar Atualizado*\nAcertos: {placar['acertos']}, Perdas: {placar['perdas']}"
+        print(f"Enviando placar: {mensagem}")
+        await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
+        logging.info(f"Placar enviado: {mensagem}")
+    except TelegramError as e:
+        print(f"Erro ao enviar placar: {str(e)}")
+        logging.error(f"Erro ao enviar placar: {str(e)}")
+
 async def iniciar_monitoramento():
-    global acertos, perdas, ultima_mensagem_espera
+    global acertos, perdas, ultima_mensagem_espera, ultimo_sinal_enviado
     print("Iniciando monitoramento")
     logging.info("Iniciando monitoramento")
     try:
@@ -253,21 +304,15 @@ async def iniciar_monitoramento():
     ultimo_resultado = None
     ultima_rodada_id = None
     duracao_media_rodada = 30  # Estimativa inicial em segundos
-    ultimo_sinal_enviado = 0
     placar = {"acertos": 0, "perdas": 0}
+    mensagem_gale_id = None
+    ultimo_sinal_rodada_id = None
 
     while True:
         try:
-            tempo_atual = time.time()
-            if tempo_atual - ultimo_sinal_enviado < 90:  # Intervalo de 90 segundos
-                if (tempo_atual - ultimo_sinal_enviado) % 10 < 1 and not ultima_mensagem_espera:  # Envia a cada 10 segundos
-                    ultima_mensagem_espera = await enviar_mensagem_espera()
-                await asyncio.sleep(1)
-                continue
-
             resultado, event_data = obter_resultado()
-            if resultado and event_data and event_data['id'] != ultima_rodada_id:
-                ultima_rodada_id = event_data['id']
+            if resultado and event_data:
+                rodada_id = event_data['id']
                 
                 # Calcular duração da rodada
                 started_at = datetime.fromisoformat(event_data['startedAt'].replace('Z', '+00:00'))
@@ -277,61 +322,80 @@ async def iniciar_monitoramento():
                 print(f"Duração da rodada: {duracao_rodada:.1f}s, Média: {duracao_media_rodada:.1f}s")
                 logging.info(f"Duração da rodada: {duracao_rodada:.1f}s, Média: {duracao_media_rodada:.1f}s")
 
-                # Validar o último sinal
-                if historico_sinais:
-                    ultimo_sinal = historico_sinais[-1]
-                    padrao_id, aposta, unidades, rodada_id, etapa, resultado_previo = ultimo_sinal
-                    resultado_atual = verificar_resultado_sinal(ultimo_sinal, resultado)
-                    if resultado_atual:
-                        historico_sinais[-1] = (padrao_id, aposta, unidades, rodada_id, etapa, resultado_atual)
-                        if etapa == "Inicial" and resultado_atual == "Vitória Inicial":
-                            acertos += 1
-                            await bot.send_message(chat_id=CHAT_ID, text="Entrou dinheiro🤑", parse_mode="Markdown")
-                            print("Sinal acertado de primeira")
-                            logging.info("Sinal acertado de primeira")
-                        elif etapa == "Gale" and resultado_atual == "Vitória no Gale":
-                            acertos += 1
-                            await bot.send_message(chat_id=CHAT_ID, text="Entrou dinheiro🤑", parse_mode="Markdown")
-                            print("Sinal acertado no gale")
-                            logging.info("Sinal acertado no gale")
-                        elif etapa == "Inicial" and resultado_previo is None and aposta != resultado:
-                            gale_unidades = 2
-                            historico_sinais.append((padrao_id, aposta, gale_unidades, event_data['id'], "Gale", None))
-                            await bot.send_message(chat_id=CHAT_ID, text="Dobra a banca e vamos no 1 gale🎯", parse_mode="Markdown")
-                            print("Ativando 1 gale")
-                            logging.info("Ativando 1 gale")
-                        elif etapa == "Gale" and resultado_atual is None:
-                            perdas += 1
-                            print("Perda confirmada após falha inicial e gale")
-                            logging.info("Perda confirmada após falha inicial e gale")
+                # Adicionar resultado ao histórico se for nova rodada
+                if rodada_id != ultima_rodada_id and event_data.get('status') == 'Resolved':
+                    ultima_rodada_id = rodada_id
+                    if resultado != ultimo_resultado:
+                        ultimo_resultado = resultado
+                        historico_resultados.append(resultado)
+                        print(f"Resultado: {resultado} (Rodada ID: {rodada_id})")
+                        logging.info(f"Resultado: {resultado} (Rodada ID: {rodada_id})")
+                        if len(historico_resultados) > 50:
+                            historico_resultados.pop(0)
 
-                # Adicionar resultado ao histórico
-                if resultado != ultimo_resultado:
-                    ultimo_resultado = resultado
-                    historico_resultados.append(resultado)
-                    print(f"Resultado: {resultado}")
-                    logging.info(f"Resultado: {resultado}")
-                    if len(historico_resultados) > 50:
-                        historico_resultados.pop(0)
+                    # Validar o último sinal enviado
+                    if historico_sinais and historico_sinais[-1][3] == rodada_id:
+                        ultimo_sinal = historico_sinais[-1]
+                        padrao_id, aposta, unidades, _, etapa, resultado_previo, mensagem_id_gale = ultimo_sinal
+                        resultado_atual = verificar_resultado_sinal(ultimo_sinal, resultado)
+                        if resultado_atual:
+                            historico_sinais[-1] = (padrao_id, aposta, unidades, rodada_id, etapa, resultado_atual, mensagem_id_gale)
+                            if etapa == "Inicial" and resultado_atual == "Vitória Inicial":
+                                acertos += 1
+                                await bot.send_message(chat_id=CHAT_ID, text="Entrou dinheiro🤑", parse_mode="Markdown")
+                                print("Sinal acertado de primeira")
+                                logging.info("Sinal acertado de primeira")
+                                if mensagem_id_gale:
+                                    await bot.delete_message(chat_id=CHAT_ID, message_id=mensagem_id_gale)
+                            elif etapa == "Gale" and resultado_atual == "Vitória no Gale":
+                                acertos += 1
+                                await bot.send_message(chat_id=CHAT_ID, text="Entrou dinheiro🤑", parse_mode="Markdown")
+                                print("Sinal acertado no gale")
+                                logging.info("Sinal acertado no gale")
+                                if mensagem_id_gale:
+                                    await bot.delete_message(chat_id=CHAT_ID, message_id=mensagem_id_gale)
+                            elif etapa == "Inicial" and resultado_previo is None and aposta != resultado:
+                                mensagem_gale_id = await enviar_mensagem_gale()
+                                historico_sinais.append((padrao_id, aposta, 2, rodada_id, "Gale", None, mensagem_gale_id))
+                                print("Ativando 1 gale")
+                                logging.info("Ativando 1 gale")
+                            elif etapa == "Gale" and resultado_atual is None:
+                                perdas += 1
+                                await bot.send_message(chat_id=CHAT_ID, text="Não foi dessa…🤧", parse_mode="Markdown")
+                                print("Perda confirmada após falha inicial e gale")
+                                logging.info("Perda confirmada após falha inicial e gale")
+                                if mensagem_id_gale:
+                                    await bot.delete_message(chat_id=CHAT_ID, message_id=mensagem_id_gale)
+                            await enviar_placar(placar)
 
-                    # Verificar padrões e calcular unidades
-                    padrao = verificar_padroes(historico_resultados)
-                    if padrao:
-                        unidades = calcular_unidades_gale(historico_sinais, resultado)
-                        historico_sinais.append((padrao['id'], padrao['aposta'], unidades, event_data['id'], "Inicial", None))
-                        # Aguardar antes de enviar o sinal
-                        tempo_espera = max(0, duracao_media_rodada - 7)
-                        print(f"Aguardando {tempo_espera:.1f}s para enviar sinal")
-                        await asyncio.sleep(tempo_espera)
-                        ultimo_sinal_enviado = time.time()
-                        ultima_mensagem_espera_id = ultima_mensagem_espera
-                        await enviar_sinal(padrao, unidades, placar, ultima_mensagem_espera_id)
+                    # Enviar novo sinal se dentro do intervalo
+                    tempo_atual = time.time()
+                    if tempo_atual - ultimo_sinal_enviado >= 90 and event_data.get('status') == 'Resolved':
+                        padrao = verificar_padroes(historico_resultados)
+                        if padrao:
+                            forte = avaliar_forca_padrao(padrao, historico_resultados)
+                            unidades = calcular_unidades_gale(historico_sinais, resultado)
+                            historico_sinais.append((padrao['id'], padrao['aposta'], unidades, rodada_id, "Inicial", None, None))
+                            tempo_espera = max(0, duracao_media_rodada - 7)
+                            print(f"Aguardando {tempo_espera:.1f}s para enviar sinal")
+                            await asyncio.sleep(tempo_espera)
+                            ultima_mensagem_espera_id = ultima_mensagem_espera
+                            ultimo_sinal_enviado = time.time()
+                            ultimo_sinal_rodada_id = rodada_id
+                            await enviar_sinal(padrao, unidades, placar, ultima_mensagem_espera_id, forte)
+                            if ultima_mensagem_espera_id:
+                                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_espera_id)
+                                ultima_mensagem_espera = None
 
-            time.sleep(1)  # Verifica a cada segundo
+                # Enviar mensagem de espera se no intervalo
+                if tempo_atual - ultimo_sinal_enviado < 90 and not ultima_mensagem_espera and (tempo_atual - ultimo_sinal_enviado) % 10 < 1:
+                    ultima_mensagem_espera = await enviar_mensagem_espera()
+
+            await asyncio.sleep(0.1)  # Consulta contínua com pequeno delay
         except Exception as e:
             print(f"Erro no loop principal: {str(e)}")
             logging.error(f"Erro no loop principal: {str(e)}")
-            time.sleep(10)
+            await asyncio.sleep(10)
 
 if __name__ == "__main__":
     asyncio.run(iniciar_monitoramento())
