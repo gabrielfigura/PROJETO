@@ -138,7 +138,7 @@ Padrão ID: {padrao_id}
 Entrar: {sinal}
 ⏳ Aposte agora!"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        logging.info(f"Sinal enviado: Padrão {padrao_id}, Sinal: {sinal}")
+        logging.info(f"Sinal enviado: Padrão {padrao_id}, Sinal: {sinal}, Tempo: {asyncio.get_event_loop().time()}")
         sinal_ativo = {"sinal": sinal, "padrao_id": padrao_id, "enviado_em": asyncio.get_event_loop().time()}
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
@@ -183,15 +183,26 @@ async def enviar_relatorio():
 
 async def monitorar_resultado(sinal, padrao_id):
     """Monitora a API para validar o resultado após enviar o sinal."""
-    global ultimo_resultado_id
-    while True:
+    global ultimo_resultado_id, sinal_ativo
+    max_wait_time = 60  # Timeout máximo de 60 segundos
+    start_time = asyncio.get_event_loop().time()
+    
+    while asyncio.get_event_loop().time() - start_time < max_wait_time:
         resultado, resultado_id, player_score, banker_score = await fetch_resultado()
         if resultado and resultado_id and (ultimo_resultado_id is None or resultado_id != ultimo_resultado_id):
+            logging.debug(f"Monitorando: Novo resultado detectado - ID: {resultado_id}, Último ID: {ultimo_resultado_id}")
             ultimo_resultado_id = resultado_id
             is_tie = (resultado == "🟡")
             await enviar_resultado(sinal, player_score, banker_score, is_tie)
+            sinal_ativo = None  # Limpa o sinal ativo após validação
             break
+        elif not resultado and resultado_id:
+            logging.warning(f"Monitorando: Resultado inválido ou incompleto - ID: {resultado_id}")
         await asyncio.sleep(5)  # Verifica a cada 5 segundos
+    
+    if sinal_ativo:
+        logging.error(f"Timeout de {max_wait_time}s atingido. Sinal {sinal} não validado.")
+        sinal_ativo = None
 
 async def main():
     """Loop principal do bot."""
