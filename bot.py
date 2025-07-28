@@ -26,12 +26,13 @@ PADROES = [
     {"id": 4, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "acao": "Entrar no lado que inicia", "aposta": "🔵"},
     {"id": 5, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "acao": "Seguir rompimento", "aposta": "🔵"},
     {"id": 6, "sequencia": ["🔵", "🔵", "🔵"], "acao": "Entrar a favor", "aposta": "🔵"},
-    {"id": 7, "sequencia": ["🔴", "🔵", "🔴"], "acao": "Seguir alternância", "aposta": "🔵"},
+    {"id": 7, "sequencia": ["🔴", "🔵", "🔴"], "acao": "Seguir alternância", "aposta": "🔴"},
     {"id": 8, "sequencia": ["🔴", "🔵", "🔵"], "acao": "Seguir nova cor", "aposta": "🔵"},
     {"id": 9, "sequencia": ["🔴", "🔴", "🟡"], "acao": "Seguir 🔴", "aposta": "🔴"},
     {"id": 10, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "acao": "Ignorar Tie e seguir 🔴", "aposta": "🔴"},
     {"id": 11, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "acao": "Seguir alternância dupla", "aposta": "🔴"},
     {"id": 12, "sequencia": ["🔵", "🔴", "🟡"], "acao": "Seguir após empate", "aposta": "🔴"},
+    {"id": 13, "sequencia": ["🔵", "🔵", "🟡", "🔵"], "acao": "Seguir após empate azul", "aposta": "🔵"},
 ]
 
 historico_resultados = []
@@ -181,9 +182,11 @@ def prever_padroes(historico):
         sequencia = padrao["sequencia"]
         tamanho = len(sequencia)
         if len(historico) >= tamanho + 1 and historico[-(tamanho + 1):-1] == sequencia[:-1]:
-            print(f"Padrão previsto: #{padrao['id']}")
-            logging.info(f"Padrão previsto: #{padrao['id']}")
+            print(f"Padrão previsto: #{padrao['id']}, Sequência: {sequencia}")
+            logging.info(f"Padrão previsto: #{padrao['id']}, Sequência: {sequencia}")
             return padrao
+    print("Nenhum padrão previsto")
+    logging.info("Nenhum padrão previsto")
     return None
 
 async def enviar_sinal(padrao, unidades, placar, ultima_mensagem_espera_id, forte=False):
@@ -331,10 +334,33 @@ async def iniciar_monitoramento():
                 # Prever e enviar novo sinal com antecedência
                 if event_data.get('status') == 'Resolved':
                     tempo_atual = time.time()
-                    if tempo_atual - ultimo_sinal_enviado >= 30:  # Reduzido para 30s
+                    if tempo_atual - ultimo_sinal_enviado >= 30:
                         padrao = prever_padroes(historico_resultados)
                         if padrao:
                             forte = avaliar_forca_padrao(padrao, historico_resultados)
                             unidades = calcular_unidades_gale(historico_sinais, resultado)
                             historico_sinais.append((padrao['id'], padrao['aposta'], unidades, rodada_id, "Inicial", None, None))
-                            tempo_espera = max(0, duracao_media_rodada - duracao
+                            tempo_espera = max(0, duracao_media_rodada - duracao_media_rodada * 0.5 + 6)
+                            print(f"Aguardando {tempo_espera:.1f}s para enviar sinal, Duração média: {duracao_media_rodada:.1f}s")
+                            logging.info(f"Aguardando {tempo_espera:.1f}s para enviar sinal, Duração média: {duracao_media_rodada:.1f}s")
+                            await asyncio.sleep(tempo_espera)
+                            ultima_mensagem_espera_id = ultima_mensagem_espera
+                            ultimo_sinal_enviado = time.time()
+                            ultimo_sinal_rodada_id = rodada_id
+                            await enviar_sinal(padrao, unidades, placar, ultima_mensagem_espera_id, forte)
+                            if ultima_mensagem_espera_id:
+                                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_espera_id)
+                                ultima_mensagem_espera = None
+
+                # Enviar mensagem de espera se no intervalo
+                if tempo_atual - ultimo_sinal_enviado < 30 and not ultima_mensagem_espera and (tempo_atual - ultimo_sinal_enviado) % 10 < 1:
+                    ultima_mensagem_espera = await enviar_mensagem_espera()
+
+            await asyncio.sleep(0.1)  # Consulta contínua com pequeno delay
+        except Exception as e:
+            print(f"Erro no loop principal: {str(e)}")
+            logging.error(f"Erro no loop principal: {str(e)}")
+            await asyncio.sleep(10)
+
+if __name__ == "__main__":
+    asyncio.run(iniciar_monitoramento())
