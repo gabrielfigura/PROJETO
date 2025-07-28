@@ -1,162 +1,158 @@
-import telegram
-import asyncio
 import requests
-from datetime import datetime
+import json
+import time
+from telegram import Bot
+from telegram.error import TelegramError
 import logging
-from tenacity import retry, stop_after_attempt, wait_fixed
 
-# Configuração de logs
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Configuração de logging
+logging.basicConfig(filename='bot.log', level=logging.INFO, 
+                   format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Bot config
-TOKEN = "7703975421:AAG-CG5Who2xs4NlevJqB5TNvjjzeUEDz8o"
+# Configurações do Bot
+BOT_TOKEN = "7703975421:AAG-CG5Who2xs4NlevJqB5TNvjjzeUEDz8o"
 CHAT_ID = "-1002859771274"
-bot = telegram.Bot(token=TOKEN)
+API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
+bot = Bot(token=BOT_TOKEN)
 
-# Mapeamento de cores da API
-MAP_CORES = {
-    "Player": "🔵",
-    "Banker": "🔴",
-    "Tie": "🟡"
-}
-
-# Lista de padrões a detectar
-PADROES = [  # apenas os 3 primeiros mostrados por espaço; inclui os 50 no código real
+# Lista de padrões
+PADROES = [
     {"id": 1, "sequencia": ["🔴", "🔴", "🔴"], "acao": "Entrar a favor"},
     {"id": 2, "sequencia": ["🔵", "🔴", "🔵"], "acao": "Entrar no oposto do último"},
     {"id": 3, "sequencia": ["🔴", "🔴", "🔵"], "acao": "Entrar contra"},
-   {"id": 4, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "acao": "Entrar no lado que inicia"},
-  {"id": 5, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "acao": "Seguir rompimento"},
-  {"id": 6, "sequencia": ["🔵", "🔵", "🔵"], "acao": "Entrar a favor"},
-  {"id": 7, "sequencia": ["🔴", "🔵", "🔴"], "acao": "Seguir alternância"},
-  {"id": 8, "sequencia": ["🔴", "🔵", "🔵"], "acao": "Seguir nova cor"},
-  {"id": 9, "sequencia": ["🔴", "🔴", "🟡"], "acao": "Seguir 🔴"},
-  {"id": 10, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "acao": "Ignorar Tie e seguir 🔴"},
-  {"id": 11, "sequencia": ["🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 12, "sequencia": ["🔴", "🔵", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 13, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "acao": "Voltar para 🔵"},
-  {"id": 14, "sequencia": ["🔴", "🟡", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 15, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "acao": "Entrar a favor"},
-  {"id": 16, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "acao": "Entrar contra 🔴"},
-  {"id": 17, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "acao": "Seguir alternância"},
-  {"id": 18, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "acao": "Entrar contra 🔵"},
-  {"id": 19, "sequencia": ["🔵", "🟡", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 20, "sequencia": ["🔴", "🔵", "🟡", "🔵", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 21, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 22, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 23, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 24, "sequencia": ["🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 25, "sequencia": ["🔴", "🔴", "🔴", "🟡", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 26, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔵"], "acao": "Seguir pares"},
-  {"id": 27, "sequencia": ["🔴", "🟡", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 28, "sequencia": ["🔵", "🔵", "🟡", "🔵", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 29, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 30, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 31, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 32, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "acao": "Seguir alternância"},
-  {"id": 33, "sequencia": ["🔴", "🔵", "🔴", "🟡", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 34, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 35, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 36, "sequencia": ["🔴", "🔴", "🟡", "🔵", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 37, "sequencia": ["🔵", "🔴", "🟡", "🔵", "🔴"], "acao": "Seguir alternância"},
-  {"id": 38, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 39, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵"], "acao": "Voltar para 🔵"},
-  {"id": 40, "sequencia": ["🔴", "🔴", "🔴", "🟡", "🔵", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 41, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔵"], "acao": "Seguir 🔵"},
-  {"id": 42, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "acao": "Seguir pares"},
-  {"id": 43, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "acao": "Seguir ciclo"},
-  {"id": 44, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵"], "acao": "Seguir 🔴"},
-  {"id": 45, "sequencia": ["🔴", "🔵", "🟡", "🔴", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 46, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "acao": "Seguir pares"},
-  {"id": 47, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵"], "acao": "Novo início"},
-  {"id": 48, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
-  {"id": 49, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "acao": "Seguir padrão 2x"},
-  {"id": 50, "sequencia": ["🔴", "🔴", "🟡", "🔵", "🔵", "🔴"], "acao": "Seguir 🔴"}
+    {"id": 4, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "acao": "Entrar no lado que inicia"},
+    {"id": 5, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "acao": "Seguir rompimento"},
+    {"id": 6, "sequencia": ["🔵", "🔵", "🔵"], "acao": "Entrar a favor"},
+    {"id": 7, "sequencia": ["🔴", "🔵", "🔴"], "acao": "Seguir alternância"},
+    {"id": 8, "sequencia": ["🔴", "🔵", "🔵"], "acao": "Seguir nova cor"},
+    {"id": 9, "sequencia": ["🔴", "🔴", "🟡"], "acao": "Seguir 🔴"},
+    {"id": 10, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "acao": "Ignorar Tie e seguir 🔴"},
+    {"id": 11, "sequencia": ["🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 12, "sequencia": ["🔴", "🔵", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 13, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "acao": "Voltar para 🔵"},
+    {"id": 14, "sequencia": ["🔴", "🟡", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 15, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "acao": "Entrar a favor"},
+    {"id": 16, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "acao": "Entrar contra 🔴"},
+    {"id": 17, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "acao": "Seguir alternância"},
+    {"id": 18, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "acao": "Entrar contra 🔵"},
+    {"id": 19, "sequencia": ["🔵", "🟡", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 20, "sequencia": ["🔴", "🔵", "🟡", "🔵", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 21, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 22, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 23, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 24, "sequencia": ["🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 25, "sequencia": ["🔴", "🔴", "🔴", "🟡", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 26, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔵"], "acao": "Seguir pares"},
+    {"id": 27, "sequencia": ["🔴", "🟡", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 28, "sequencia": ["🔵", "🔵", "🟡", "🔵", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 29, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 30, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 31, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 32, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "acao": "Seguir alternância"},
+    {"id": 33, "sequencia": ["🔴", "🔵", "🔴", "🟡", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 34, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 35, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 36, "sequencia": ["🔴", "🔴", "🟡", "🔵", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 37, "sequencia": ["🔵", "🔴", "🟡", "🔵", "🔴"], "acao": "Seguir alternância"},
+    {"id": 38, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 39, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵"], "acao": "Voltar para 🔵"},
+    {"id": 40, "sequencia": ["🔴", "🔴", "🔴", "🟡", "🔵", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 41, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔵"], "acao": "Seguir 🔵"},
+    {"id": 42, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "acao": "Seguir pares"},
+    {"id": 43, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "acao": "Seguir ciclo"},
+    {"id": 44, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵"], "acao": "Seguir 🔴"},
+    {"id": 45, "sequencia": ["🔴", "🔵", "🟡", "🔴", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 46, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "acao": "Seguir pares"},
+    {"id": 47, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵"], "acao": "Novo início"},
+    {"id": 48, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "acao": "Seguir 🔴"},
+    {"id": 49, "sequencia": ["🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "acao": "Seguir padrão 2x"},
+    {"id": 50, "sequencia": ["🔴", "🔴", "🟡", "🔵", "🔵", "🔴"], "acao": "Seguir 🔴"}
 ]
 
-historico = []
-placar = []
-ultimo_sinal = None
+historico_resultados = []
 
-# Buscar dados da API
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-async def buscar_resultado():
-    url = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
-    resp = requests.get(url)
-    resp.raise_for_status()
-    dados = resp.json()
+def obter_resultado():
+    try:
+        resposta = requests.get(API_URL, timeout=5)
+        resposta.raise_for_status()  # Levanta exceção para status diferente de 200
+        dados = resposta.json()
+        
+        if not dados:
+            logging.error("API retornou lista vazia")
+            return None
+            
+        latest_event = dados[0]
+        if 'playerScore' not in latest_event or 'bankerScore' not in latest_event:
+            logging.error("Chaves playerScore ou bankerScore ausentes")
+            return None
 
-    resultado = dados["data"]["result"]["outcome"]
-    return MAP_CORES.get(resultado)
+        player_score = latest_event['playerScore']
+        banker_score = latest_event['bankerScore']
 
-# Verificar se há algum padrão
-def detectar_padrao():
+        if player_score > banker_score:
+            return "🔴"
+        elif banker_score > player_score:
+            return "🔵"
+        else:
+            return "🟡"
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Erro ao buscar resultado: {e}")
+        return None
+
+def verificar_padroes(historico):
     for padrao in PADROES:
-        seq = padrao["sequencia"]
-        if historico[-len(seq):] == seq:
+        sequencia = padrao["sequencia"]
+        tamanho = len(sequencia)
+        if len(historico) >= tamanho and historico[-tamanho:] == sequencia:
             return padrao
     return None
 
-# Enviar sinal para o Telegram
-async def enviar_sinal(padrao):
-    cor_base = padrao["sequencia"][-1]
-    acao = padrao["acao"]
-
-    mensagem = f"""📡 *Padrão Detectado!*
-Sequência: {"".join(padrao["sequencia"])}
-🎯 Ação recomendada: *{acao}*
-🕑 {datetime.now().strftime('%H:%M:%S')}
+def enviar_sinal(padrao):
+    try:
+        mensagem = f"""
+📊 *Sinal Detectado*
+Padrão #{padrao['id']}
+Sequência: {' '.join(padrao['sequencia'])}
+🎯 Ação: *{padrao['acao']}*
 """
-    await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode=telegram.ParseMode.MARKDOWN)
+        bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
+        logging.info(f"Sinal enviado: Padrão #{padrao['id']}")
+    except TelegramError as e:
+        logging.error(f"Erro ao enviar sinal: {e}")
 
-# Enviar resultado após o sinal
-async def enviar_resultado(cor_esperada, cor_real):
-    global placar
+def iniciar_monitoramento():
+    logging.info("Iniciando monitoramento")
+    try:
+        # Verificar se o bot está funcional
+        bot.get_me()
+        logging.info("Bot inicializado com sucesso")
+    except TelegramError as e:
+        logging.error(f"Erro ao inicializar bot: {e}")
+        return
 
-    if cor_real == cor_esperada:
-        placar.append("✅")
-        status = "💰✅ BATEU ✅💰"
-    else:
-        placar = []  # Zera após erro
-        status = "❌ ERRO ❌"
-
-    texto = f"{status}\nResultado: {cor_real}\nPlacar: {' '.join(placar)}"
-    await bot.send_message(chat_id=CHAT_ID, text=texto)
-
-# Função principal
-async def monitorar():
-    global ultimo_sinal
+    ultimo_resultado = None
     while True:
         try:
-            cor = await buscar_resultado()
-            if not cor:
-                await asyncio.sleep(3)
-                continue
+            resultado = obter_resultado()
+            if resultado and resultado != ultimo_resultado:
+                ultimo_resultado = resultado
+                historico_resultados.append(resultado)
+                logging.info(f"Resultado: {resultado}")
+                if len(historico_resultados) > 50:
+                    historico_resultados.pop(0)
 
-            if not historico or historico[-1] != cor:
-                historico.append(cor)
-                logger.info(f"Novo resultado: {cor} | Histórico: {historico[-10:]}")
+                padrao = verificar_padroes(historico_resultados)
+                if padrao:
+                    enviar_sinal(padrao)
 
-                if len(historico) >= 3 and not ultimo_sinal:
-                    padrao = detectar_padrao()
-                    if padrao:
-                        ultimo_sinal = padrao
-                        await enviar_sinal(padrao)
-
-                elif ultimo_sinal:
-                    cor_esperada = ultimo_sinal["sequencia"][-1]
-                    await enviar_resultado(cor_esperada, cor)
-                    ultimo_sinal = None
-
-            await asyncio.sleep(5)
+            time.sleep(3)
+        except KeyboardInterrupt:
+            logging.info("Monitoramento encerrado pelo usuário")
+            break
         except Exception as e:
-            logger.error(f"Erro: {e}")
-            await asyncio.sleep(5)
+            logging.error(f"Erro no loop principal: {e}")
+            time.sleep(10)  # Espera maior em caso de erro
 
-# Executar
 if __name__ == "__main__":
-    asyncio.run(monitorar())
+    iniciar_monitoramento()
