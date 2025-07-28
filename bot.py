@@ -60,7 +60,13 @@ PADROES = [
 {"id": 35, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
 {"id": 36, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
 {"id": 37, "sequencia": ["🔵", "🔴", "🔴", "🔴"], "sinal": "🔴"},
-{"id": 38, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵"}
+{"id": 38, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+{"id": 39, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 40, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "sinal": "🔵"},
+{"id": 41, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "sinal": "🔴"},
+    {"id": 42, "sequencia": ["🔵", "🔴", "🟡", "🔵"], "sinal": "🔵"},
+{"id": 43, "sequencia": ["🔴", "🔴", "🔵", "🟡"], "sinal": "🔴"},
+    {"id": 44, "sequencia": ["🔵", "🔵", "🔴", "🟡"], "sinal": "🔵"},
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
