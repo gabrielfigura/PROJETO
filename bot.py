@@ -129,26 +129,26 @@ async def fetch_resultado():
             return None, None, None, None
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_sinal(sinal, padrao_id, resultado_id):
-    """Envia uma mensagem de sinal ao Telegram com retry."""
+async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
+    """Envia uma mensagem de sinal ao Telegram com retry, incluindo a sequência de cores."""
     try:
+        sequencia_str = " ".join(sequencia)
         mensagem = f"""🎯 SINAL ENCONTRADO
 Padrão ID: {padrao_id}
+Sequência: {sequencia_str}
 Entrar: {sinal}
 ⏳ Aposte agora!"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        logging.info(f"Sinal enviado: Padrão {padrao_id}, Sinal: {sinal}, Resultado ID: {resultado_id}, Tempo: {asyncio.get_event_loop().time()}")
-        sinais_ativos.append({"sinal": sinal, "padrao_id": padrao_id, "resultado_id": resultado_id, "enviado_em": asyncio.get_event_loop().time()})
+        logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}, Tempo: {asyncio.get_event_loop().time()}")
+        sinais_ativos.append({"sinal": sinal, "padrao_id": padrao_id, "resultado_id": resultado_id, "sequencia": sequencia, "enviado_em": asyncio.get_event_loop().time()})
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
         raise
 
-async def enviar_resultado(sinal, resultado, player_score, banker_score, resultado_id):
-    """Envia a validação simples de cada sinal ao Telegram após o resultado."""
+async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
+    """Envia a validação de cada sinal ao Telegram após o resultado da mesma rodada."""
     try:
-        # Verifica todos os sinais ativos e valida com o resultado correspondente
         for sinal_ativo in sinais_ativos[:]:
-            logging.debug(f"Verificando sinal ativo: ID {sinal_ativo['resultado_id']}, Sinal {sinal_ativo['sinal']}, Resultado atual: {resultado}")
             if sinal_ativo["resultado_id"] == resultado_id:
                 resultado_texto = f"🎲 Resultado: "
                 if resultado == "🟡":
@@ -156,21 +156,22 @@ async def enviar_resultado(sinal, resultado, player_score, banker_score, resulta
                 else:
                     resultado_texto += f"AZUL: {player_score} VS VERMELHO: {banker_score}"
 
+                sequencia_str = " ".join(sinal_ativo["sequencia"])
                 if resultado == sinal_ativo["sinal"]:
                     mensagem_validacao = "ENTROU DINHEIRO🤑"
                 else:
                     mensagem_validacao = "NÃO FOI DESSA🤧"
 
-                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}): {mensagem_validacao}"
+                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}, Sequência: {sequencia_str}): {mensagem_validacao}"
                 await bot.send_message(chat_id=CHAT_ID, text=msg)
                 logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                 sinais_ativos.remove(sinal_ativo)
-                break  # Para evitar múltiplas validações para o mesmo resultado_id
+                break
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
 async def enviar_relatorio():
-    """Envia um relatório periódico (sem placar)."""
+    """Envia um relatório periódico."""
     while True:
         try:
             msg = "📈 Relatório: Bot em operação"
@@ -180,12 +181,8 @@ async def enviar_relatorio():
             logging.error(f"Erro ao enviar relatório: {e}")
         await asyncio.sleep(3600)
 
-async def enviar_placar():
-    """Remove a função de enviar placar (não mais necessária)."""
-    pass
-
 async def monitorar_resultado():
-    """Monitora a API em tempo real para validar todos os sinais ativos com timeout por sinal."""
+    """Monitora a API em tempo real para validar sinais ativos."""
     global ultimo_resultado_id
     while True:
         try:
@@ -194,7 +191,7 @@ async def monitorar_resultado():
                 if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
                     ultimo_resultado_id = resultado_id
                     logging.info(f"Novo resultado detectado: ID {resultado_id}, Resultado {resultado}, Player {player_score}, Banker {banker_score}, Sinais ativos: {len(sinais_ativos)}")
-                    await enviar_resultado(sinal=None, resultado=resultado, player_score=player_score, banker_score=banker_score, resultado_id=resultado_id)
+                    await enviar_resultado(resultado, player_score, banker_score, resultado_id)
                 else:
                     logging.debug(f"Resultado repetido: ID {resultado_id}")
             elif not resultado and resultado_id:
@@ -228,7 +225,7 @@ async def main():
                     seq = padrao["sequencia"]
                     if len(historico) >= len(seq) and historico[-len(seq):] == seq and padrao["id"] != ultimo_padrao_id:
                         sinal = padrao["sinal"]
-                        await enviar_sinal(sinal, padrao["id"], resultado_id)
+                        await enviar_sinal(sinal, padrao["id"], resultado_id, seq)
                         ultimo_padrao_id = padrao["id"]
                         break
 
