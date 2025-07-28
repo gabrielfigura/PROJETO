@@ -145,25 +145,29 @@ Entrar: {sinal}
         raise
 
 async def enviar_resultado(sinal, resultado, player_score, banker_score, resultado_id):
-    """Envia a validação do resultado ao Telegram."""
+    """Envia a validação de cada sinal ao Telegram."""
     global placar
     try:
-        resultado_texto = f"🎲 Resultado: "
-        if resultado == "🟡":
-            resultado_texto += f"EMPATE: {player_score}:{banker_score}"
-        else:
-            resultado_texto += f"AZUL: {player_score} VS VERMELHO: {banker_score}"
+        # Verifica todos os sinais ativos e valida com o resultado correspondente
+        for sinal_ativo in sinais_ativos[:]:
+            if sinal_ativo["resultado_id"] == resultado_id:
+                resultado_texto = f"🎲 Resultado: "
+                if resultado == "🟡":
+                    resultado_texto += f"EMPATE: {player_score}:{banker_score}"
+                else:
+                    resultado_texto += f"AZUL: {player_score} VS VERMELHO: {banker_score}"
 
-        if resultado == sinal:
-            resultado_sinal = "✅ ENTROU DINHEIRO🤑🤌"
-            placar["✅"] += 1
-        else:
-            resultado_sinal = "❌ NÃO FOI DESSA🤧"
-            placar["✅"] = 0
+                if resultado == sinal_ativo["sinal"]:
+                    resultado_sinal = "✅ ENTROU DINHEIRO🤑🤌"
+                    placar["✅"] += 1
+                else:
+                    resultado_sinal = "❌ NÃO FOI DESSA🤧"
+                    placar["✅"] = 0
 
-        msg = f"{resultado_texto}\n📊 Resultado do sinal: {resultado_sinal}\nPlacar: {placar['✅']}✅"
-        await bot.send_message(chat_id=CHAT_ID, text=msg)
-        logging.info(f"Resultado enviado: Sinal {sinal}, Resultado {resultado}, Resultado ID: {resultado_id}, Player {player_score}, Banker {banker_score}, Resultado {resultado_sinal}")
+                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}): {resultado_sinal}\nPlacar: {placar['✅']}✅"
+                await bot.send_message(chat_id=CHAT_ID, text=msg)
+                logging.info(f"Resultado enviado: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Player {player_score}, Banker {banker_score}, Resultado {resultado_sinal}")
+                sinais_ativos.remove(sinal_ativo)
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
@@ -203,7 +207,6 @@ async def monitorar_resultado():
                     for sinal_ativo in sinais_ativos[:]:
                         if sinal_ativo["resultado_id"] == resultado_id:
                             await enviar_resultado(sinal_ativo["sinal"], resultado, player_score, banker_score, resultado_id)
-                            sinais_ativos.remove(sinal_ativo)
                             break
                         elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 120:  # Timeout de 120 segundos
                             logging.warning(f"Timeout de 120s para sinal: Padrão {sinal_ativo['padrao_id']}, Resultado ID {sinal_ativo['resultado_id']}")
