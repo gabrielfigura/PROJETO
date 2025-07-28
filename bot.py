@@ -78,19 +78,28 @@ def obter_resultado():
     try:
         print("Tentando buscar resultado da API...")
         logging.info("Tentando buscar resultado da API...")
-        resposta = requests.get(API_URL, timeout=5)
+        headers = {"User-Agent": "Mozilla/5.0"}  # Adicionado para evitar bloqueios
+        resposta = requests.get(API_URL, timeout=5, headers=headers)
         resposta.raise_for_status()  # Levanta exceção para status diferente de 200
         dados = resposta.json()
         
-        if not dados:
-            print("API retornou lista vazia")
-            logging.error("API retornou lista vazia")
+        print(f"Resposta da API: {json.dumps(dados, indent=2)}")
+        logging.info(f"Resposta da API: {json.dumps(dados, indent=2)}")
+        
+        if not dados or not isinstance(dados, list):
+            print("API retornou dados inválidos ou lista vazia")
+            logging.error("API retornou dados inválidos ou lista vazia")
             return None, None
             
         latest_event = dados[0]
+        if not isinstance(latest_event, dict):
+            print("Primeiro item da API não é um dicionário")
+            logging.error("Primeiro item da API não é um dicionário")
+            return None, None
+
         if 'playerScore' not in latest_event or 'bankerScore' not in latest_event:
-            print("Chaves playerScore ou bankerScore ausentes")
-            logging.error("Chaves playerScore ou bankerScore ausentes")
+            print(f"Chaves ausentes no evento: {latest_event.keys()}")
+            logging.error(f"Chaves ausentes no evento: {latest_event.keys()}")
             return None, None
 
         player_score = latest_event['playerScore']
@@ -109,6 +118,10 @@ def obter_resultado():
         print(f"Erro ao buscar resultado: {str(e)}")
         logging.error(f"Erro ao buscar resultado: {str(e)}")
         raise  # Levanta exceção para o retry do tenacity
+    except KeyError as e:
+        print(f"KeyError na API: {str(e)}")
+        logging.error(f"KeyError na API: {str(e)}")
+        return None, None  # Retorna None para evitar retry em KeyError
 
 def verificar_padroes(historico):
     print(f"Histórico atual: {historico[-10:]}")
@@ -171,7 +184,7 @@ async def iniciar_monitoramento():
                 if padrao:
                     await enviar_sinal(padrao)
 
-            time.sleep(5)  # Ajustado para 5 segundos
+            time.sleep(5)  # Intervalo de 5 segundos
         except Exception as e:
             print(f"Erro no loop principal: {str(e)}")
             logging.error(f"Erro no loop principal: {str(e)}")
