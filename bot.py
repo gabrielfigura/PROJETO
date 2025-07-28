@@ -7,7 +7,7 @@ from telegram.error import TelegramError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # Configurações do Bot
-BOT_TOKEN = os.getenv("BOT_TOKEN",  "7703975421:AAG-CG5Who2xs4NlevJqB5TNvjjzeUEDz8o")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7703975421:AAG-CG5Who2xs4NlevJqB5TNvjjzeUEDz8o")
 CHAT_ID = os.getenv("CHAT_ID", "-1002859771274")
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
 
@@ -22,6 +22,7 @@ historico = []
 ultimo_padrao_id = None
 ultimo_resultado_id = None
 sinais_ativos = []
+placar = {"✅": 0, "❌": 0}
 
 # Mapeamento de outcomes para emojis
 OUTCOME_MAP = {
@@ -139,17 +140,19 @@ Sequência: {sequencia_str}
 Entrar: {sinal}
 ⏳ Aposte agora!"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}, Tempo: {asyncio.get_event_loop().time()}")
-        sinais_ativos.append({"sinal": sinal, "padrao_id": padrao_id, "resultado_id": resultado_id, "sequencia": sequencia, "enviado_em": asyncio.get_event_loop().time()})
+        logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}")
+        sinais_ativos.append({"sinal": sinal, "padrao_id": padrao_id, "resultado_id": resultado_id, "sequencia": sequencia})
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
         raise
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
-    """Envia a validação de cada sinal ao Telegram após o resultado da mesma rodada."""
+    """Envia a validação de cada sinal ao Telegram após o resultado da próxima rodada."""
     try:
         for sinal_ativo in sinais_ativos[:]:
-            if sinal_ativo["resultado_id"] == resultado_id:
+            # Validar apenas se o resultado é posterior ao sinal
+            if sinal_ativo["resultado_id"] != resultado_id:
                 resultado_texto = f"🎲 Resultado: "
                 if resultado == "🟡":
                     resultado_texto += f"EMPATE: {player_score}:{banker_score}"
@@ -158,58 +161,35 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
 
                 sequencia_str = " ".join(sinal_ativo["sequencia"])
                 if resultado == sinal_ativo["sinal"]:
+                    placar["✅"] += 1
                     mensagem_validacao = "ENTROU DINHEIRO🤑"
                 else:
+                    placar["❌"] += 1
                     mensagem_validacao = "NÃO FOI DESSA🤧"
 
-                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}, Sequência: {sequencia_str}): {mensagem_validacao}"
+                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}, Sequência: {sequencia_str}): {mensagem_validacao}\nPlacar: {placar['✅']}✅ | {placar['❌']}❌"
                 await bot.send_message(chat_id=CHAT_ID, text=msg)
                 logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                 sinais_ativos.remove(sinal_ativo)
-                break
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_relatorio():
-    """Envia um relatório periódico."""
+    """Envia um relatório periódico com o placar."""
     while True:
         try:
-            msg = "📈 Relatório: Bot em operação"
+            msg = f"📈 Relatório: Bot em operação\nPlacar: {placar['✅']}✅ | {placar['❌']}❌"
             await bot.send_message(chat_id=CHAT_ID, text=msg)
             logging.info(f"Relatório enviado: {msg}")
         except TelegramError as e:
             logging.error(f"Erro ao enviar relatório: {e}")
         await asyncio.sleep(3600)
 
-async def monitorar_resultado():
-    """Monitora a API em tempo real para validar sinais ativos."""
-    global ultimo_resultado_id
-    while True:
-        try:
-            resultado, resultado_id, player_score, banker_score = await fetch_resultado()
-            if resultado and resultado_id:
-                if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
-                    ultimo_resultado_id = resultado_id
-                    logging.info(f"Novo resultado detectado: ID {resultado_id}, Resultado {resultado}, Player {player_score}, Banker {banker_score}, Sinais ativos: {len(sinais_ativos)}")
-                    await enviar_resultado(resultado, player_score, banker_score, resultado_id)
-                else:
-                    logging.debug(f"Resultado repetido: ID {resultado_id}")
-            elif not resultado and resultado_id:
-                logging.warning(f"Resultado inválido ou incompleto: ID {resultado_id}")
-            await asyncio.sleep(2)
-        except Exception as e:
-            logging.error(f"Erro no monitoramento: {e}")
-            await asyncio.sleep(5)
-
 async def main():
     """Loop principal do bot com reconexão."""
     global historico, ultimo_padrao_id, ultimo_resultado_id
     asyncio.create_task(enviar_relatorio())
-
-    # Variável para controlar sinais pendentes para validação de gale
-    sinal_pendente = None
-    gale_ativo = False
-    gale_1_resultado_id = None
 
     while True:
         try:
@@ -218,75 +198,26 @@ async def main():
                 await asyncio.sleep(2)
                 continue
 
-            historico.append(resultado)
-            historico = historico[-25:]  # Mantém os últimos 25 resultados
-
-            # Detecta padrão e envia sinal
             if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
                 ultimo_resultado_id = resultado_id
+                historico.append(resultado)
+                historico = historico[-25:]  # Mantém os últimos 25 resultados
                 logging.info(f"Histórico atualizado: {historico} (ID: {resultado_id})")
 
+                # Verifica se há sinais ativos para validar
+                await enviar_resultado(resultado, player_score, banker_score, resultado_id)
+
+                # Detecta padrão e envia sinal
                 padroes_ordenados = sorted(PADROES, key=lambda x: len(x["sequencia"]), reverse=True)
                 for padrao in padroes_ordenados:
                     seq = padrao["sequencia"]
                     if len(historico) >= len(seq) and historico[-len(seq):] == seq and padrao["id"] != ultimo_padrao_id:
-                        sinal = padrao["sinal"]
-                        # Sinal detectado, prepara para validar próximos 2 resultados
-                        sinal_pendente = {
-                            "sinal": sinal,
-                            "padrao_id": padrao["id"],
-                            "sequencia": seq,
-                            "resultado_id": resultado_id,
-                            "gale": 0,
-                            "gale_1_resultado_id": None
-                        }
-                        await enviar_sinal(sinal, padrao["id"], resultado_id, seq)
+                        await enviar_sinal(padroes=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=seq)
                         ultimo_padrao_id = padrao["id"]
-                        gale_ativo = False
                         break
 
                 if len(historico) >= 5:
                     ultimo_padrao_id = None
-
-            # Validação do sinal e gale
-            if sinal_pendente:
-                # Verifica se já validou o sinal (gale 0)
-                idx_seq = historico.index(sinal_pendente["sequencia"][-1]) if sinal_pendente["sequencia"][-1] in historico else -1
-                # O resultado imediatamente após a sequência
-                idx_sinal = len(historico) - 1
-                idx_gale_1 = len(historico) - 2
-                # Só valida se o resultado atual for após a sequência
-                if idx_seq >= 0 and idx_seq < len(historico) - 1:
-                    # Gale 0: resultado imediatamente após a sequência
-                    resultado_apos_seq = historico[idx_seq + 1]
-                    if resultado_apos_seq == sinal_pendente["sinal"]:
-                        # Green sem gale
-                        sequencia_str = " ".join(sinal_pendente["sequencia"])
-                        msg = f"ENTROU DINHEIRO🤑\nPadrão ID: {sinal_pendente['padrao_id']}\nSequência: {sequencia_str}\nSinal: {sinal_pendente['sinal']}"
-                        await bot.send_message(chat_id=CHAT_ID, text=msg)
-                        sinal_pendente = None
-                        gale_ativo = False
-                    elif idx_seq + 2 < len(historico):
-                        # Gale 1: resultado seguinte
-                        resultado_gale_1 = historico[idx_seq + 2]
-                        if not gale_ativo:
-                            # Ativa gale 1
-                            gale_ativo = True
-                            msg_gale = "⚠️ Calma lá, vamos ao Gale 1!"
-                            await bot.send_message(chat_id=CHAT_ID, text=msg_gale)
-                        if resultado_gale_1 == sinal_pendente["sinal"]:
-                            sequencia_str = " ".join(sinal_pendente["sequencia"])
-                            msg = f"ENTROU DINHEIRO🤑\nPadrão ID: {sinal_pendente['padrao_id']}\nSequência: {sequencia_str}\nSinal: {sinal_pendente['sinal']} (Gale 1)"
-                            await bot.send_message(chat_id=CHAT_ID, text=msg)
-                            sinal_pendente = None
-                            gale_ativo = False
-                        else:
-                            # Red após gale 1
-                            sequencia_str = " ".join(sinal_pendente["sequencia"])
-                            msg = f"NÃO FOI DESSA🤧\nPadrão ID: {sinal_pendente['padrao_id']}\nSequência: {sequencia_str}\nSinal: {sinal_pendente['sinal']}"
-                            await bot.send_message(chat_id=CHAT_ID, text=msg)
-                            sinal_pendente = None
-                            gale_ativo = False
 
             await asyncio.sleep(2)
         except Exception as e:
