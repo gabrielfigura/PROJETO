@@ -74,21 +74,27 @@ historico_resultados = []
 
 def obter_resultado():
     try:
+        print("Tentando buscar resultado da API...")
+        logging.info("Tentando buscar resultado da API...")
         resposta = requests.get(API_URL, timeout=5)
         resposta.raise_for_status()  # Levanta exceção para status diferente de 200
         dados = resposta.json()
         
         if not dados:
+            print("API retornou lista vazia")
             logging.error("API retornou lista vazia")
             return None
             
         latest_event = dados[0]
         if 'playerScore' not in latest_event or 'bankerScore' not in latest_event:
+            print("Chaves playerScore ou bankerScore ausentes")
             logging.error("Chaves playerScore ou bankerScore ausentes")
             return None
 
         player_score = latest_event['playerScore']
         banker_score = latest_event['bankerScore']
+        print(f"Player Score: {player_score}, Banker Score: {banker_score}")
+        logging.info(f"Player Score: {player_score}, Banker Score: {banker_score}")
 
         if player_score > banker_score:
             return "🔴"
@@ -98,14 +104,19 @@ def obter_resultado():
             return "🟡"
 
     except requests.exceptions.RequestException as e:
+        print(f"Erro ao buscar resultado: {e}")
         logging.error(f"Erro ao buscar resultado: {e}")
         return None
 
 def verificar_padroes(historico):
+    print(f"Histórico atual: {historico[-10:]}")  # Mostra os últimos 10 resultados
+    logging.info(f"Histórico atual: {historico[-10:]}")
     for padrao in PADROES:
         sequencia = padrao["sequencia"]
         tamanho = len(sequencia)
         if len(historico) >= tamanho and historico[-tamanho:] == sequencia:
+            print(f"Padrão encontrado: #{padrao['id']}")
+            logging.info(f"Padrão encontrado: #{padrao['id']}")
             return padrao
     return None
 
@@ -117,18 +128,24 @@ Padrão #{padrao['id']}
 Sequência: {' '.join(padrao['sequencia'])}
 🎯 Ação: *{padrao['acao']}*
 """
+        print(f"Enviando sinal: Padrão #{padrao['id']}")
         await bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="Markdown")
         logging.info(f"Sinal enviado: Padrão #{padrao['id']}")
     except TelegramError as e:
+        print(f"Erro ao enviar sinal: {e}")
         logging.error(f"Erro ao enviar sinal: {e}")
 
 async def iniciar_monitoramento():
+    print("Iniciando monitoramento")
     logging.info("Iniciando monitoramento")
     try:
         # Verificar se o bot está funcional
+        print("Verificando conexão com o Telegram...")
         await bot.get_me()
+        print("Bot inicializado com sucesso")
         logging.info("Bot inicializado com sucesso")
     except TelegramError as e:
+        print(f"Erro ao inicializar bot: {e}")
         logging.error(f"Erro ao inicializar bot: {e}")
         return
 
@@ -139,6 +156,7 @@ async def iniciar_monitoramento():
             if resultado and resultado != ultimo_resultado:
                 ultimo_resultado = resultado
                 historico_resultados.append(resultado)
+                print(f"Resultado: {resultado}")
                 logging.info(f"Resultado: {resultado}")
                 if len(historico_resultados) > 50:
                     historico_resultados.pop(0)
@@ -149,9 +167,11 @@ async def iniciar_monitoramento():
 
             time.sleep(3)  # Mantido síncrono para evitar bloqueio
         except KeyboardInterrupt:
+            print("Monitoramento encerrado pelo usuário")
             logging.info("Monitoramento encerrado pelo usuário")
             break
         except Exception as e:
+            print(f"Erro no loop principal: {e}")
             logging.error(f"Erro no loop principal: {e}")
             time.sleep(10)  # Espera maior em caso de erro
 
