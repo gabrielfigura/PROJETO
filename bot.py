@@ -22,7 +22,7 @@ historico = []
 ultimo_padrao_id = None
 ultimo_resultado_id = None
 sinais_ativos = []
-placar = {"✅": 0, "❌": 0}
+placar = {"✅": 0}
 
 # Mapeamento de outcomes para emojis
 OUTCOME_MAP = {
@@ -138,6 +138,7 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
 Padrão ID: {padrao_id}
 Sequência: {sequencia_str}
 Entrar: {sinal}
+Proteger o empate🟡
 ⏳ Aposte agora!"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
         logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}")
@@ -160,15 +161,15 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     resultado_texto += f"AZUL: {player_score} VS VERMELHO: {banker_score}"
 
                 sequencia_str = " ".join(sinal_ativo["sequencia"])
-                if resultado == sinal_ativo["sinal"]:
+                # Considerar empate (🟡) como acerto
+                if resultado == sinal_ativo["sinal"] or resultado == "🟡":
                     placar["✅"] += 1
-                    mensagem_validacao = "ENTROU DINHEIRO🤑"
+                    mensagem_validacao = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str}): ENTROU DINHEIRO🤑\nPlacar: {placar['✅']}✅"
                 else:
-                    placar["❌"] += 1
+                    placar["✅"] = 0  # Zera o placar de acertos em caso de erro
                     mensagem_validacao = "NÃO FOI DESSA🤧"
 
-                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}, Sequência: {sequencia_str}): {mensagem_validacao}\nPlacar: {placar['✅']}✅ | {placar['❌']}❌"
-                await bot.send_message(chat_id=CHAT_ID, text=msg)
+                await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                 logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                 sinais_ativos.remove(sinal_ativo)
             # Limpar sinais obsoletos (mais de 5 minutos sem validação)
@@ -183,7 +184,7 @@ async def enviar_relatorio():
     """Envia um relatório periódico com o placar."""
     while True:
         try:
-            msg = f"📈 Relatório: Bot em operação\nPlacar: {placar['✅']}✅ | {placar['❌']}❌"
+            msg = f"📈 Relatório: Bot em operação\nPlacar: {placar['✅']}✅"
             await bot.send_message(chat_id=CHAT_ID, text=msg)
             logging.info(f"Relatório enviado: {msg}")
         except TelegramError as e:
