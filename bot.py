@@ -14,27 +14,28 @@ API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/late
 # Inicializar o bot
 bot = Bot(token=BOT_TOKEN)
 
-# Logging
+# Configuração de logging
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Estado
+# Histórico e estado
 historico = []
 ultimo_padrao_id = None
 ultimo_resultado_id = None
-placar = {"✅": 0, "❌": 0}
+placar = 0  # Placar de acertos
 sinais_ativos = []
 
+# Mapeamento de outcomes para emojis
 OUTCOME_MAP = {
     "PlayerWon": "🔵",
     "BankerWon": "🔴",
     "Tie": "🟡"
 }
 
-# Padrões (resumido para caber, use seus padrões completos)
+# Padrões
 PADROES = [
     {"id": 1, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 2, "sequencia": ["🔵", "🔵", "🔵"], "sinal": "🔵"},
-     {"id": 3, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 2, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 3, "sequencia": ["🔴", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 4, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
     {"id": 5, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 6, "sequencia": ["🔵", "🔵", "🔵"], "sinal": "🔵"},
@@ -86,101 +87,141 @@ PADROES = [
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
 async def fetch_resultado():
+    """Busca o resultado mais recente da API com retry e timeout aumentado."""
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(API_URL, timeout=aiohttp.ClientTimeout(total=15)) as response:
                 if response.status != 200:
-                    logging.error(f"Erro na API: {response.status}")
+                    logging.error(f"Erro na API: Status {response.status}, Resposta: {await response.text()}")
                     return None, None, None, None
                 data = await response.json()
-                if 'data' not in data or 'result' not in data['data']:
+                logging.debug(f"Resposta da API: {data}")
+                
+                if 'data' not in data or 'result' not in data['data'] or 'outcome' not in data['data']['result']:
+                    logging.error(f"Estrutura inválida na resposta: {data}")
                     return None, None, None, None
+                if 'id' not in data:
+                    logging.error(f"Chave 'id' não encontrada na resposta: {data}")
+                    return None, None, None, None
+                
                 if data['data'].get('status') != 'Resolved':
+                    logging.debug(f"Jogo não resolvido: Status {data['data'].get('status')}")
                     return None, None, None, None
-
+                
                 resultado_id = data['id']
                 outcome = data['data']['result']['outcome']
                 player_score = data['data']['result'].get('playerDice', {}).get('score', 0)
                 banker_score = data['data']['result'].get('bankerDice', {}).get('score', 0)
-                resultado = OUTCOME_MAP.get(outcome, None)
-
+                
+                if outcome not in OUTCOME_MAP:
+                    logging.error(f"Outcome inválido: {outcome}")
+                    return None, None, None, None
+                resultado = OUTCOME_MAP[outcome]
+                
                 return resultado, resultado_id, player_score, banker_score
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            logging.error(f"Erro de conexão com a API: {e}")
+            return None, None, None, None
+        except ValueError as e:
+            logging.error(f"Erro ao parsear JSON: {e}")
+            return None, None, None, None
         except Exception as e:
-            logging.error(f"Erro ao buscar resultado: {e}")
+            logging.error(f"Erro inesperado ao buscar resultado: {e}")
             return None, None, None, None
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id):
+    """Envia uma mensagem de sinal ao Telegram com retry."""
     try:
         mensagem = f"""🎯 SINAL ENCONTRADO
 Padrão ID: {padrao_id}
 Entrar: {sinal}
 ⏳ Aposte agora!"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        sinais_ativos.append({
-            "sinal": sinal,
-            "padrao_id": padrao_id,
-            "resultado_id": resultado_id,
-            "enviado_em": asyncio.get_event_loop().time()
-        })
+        logging.info(f"Sinal enviado: Padrão {padrao_id}, Sinal: {sinal}, Resultado ID: {resultado_id}, Tempo: {asyncio.get_event_loop().time()}")
+        sinais_ativos.append({"sinal": sinal, "padrao_id": padrao_id, "resultado_id": resultado_id, "enviado_em": asyncio.get_event_loop().time()})
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
         raise
 
 async def enviar_resultado(sinal, resultado, player_score, banker_score, resultado_id):
-    """Valida o sinal com o resultado e envia mensagem no Telegram."""
+    """Envia a validação simples de cada sinal ao Telegram após o resultado."""
     global placar
-
     try:
-        if resultado == "🟡" or resultado == sinal:
-            resultado_sinal = "✅ ENTROU DINHEIRO🤑🤌"
-            placar["✅"] += 1
-        else:
-            resultado_sinal = "❌ NÃO FOI DESSA🤧"
-            placar["✅"] = 0
+        # Verifica todos os sinais ativos e valida com o resultado correspondente
+        for sinal_ativo in sinais_ativos[:]:
+            if sinal_ativo["resultado_id"] == resultado_id:
+                resultado_texto = f"🎲 Resultado: "
+                if resultado == "🟡":
+                    resultado_texto += f"EMPATE: {player_score}:{banker_score}"
+                else:
+                    resultado_texto += f"AZUL: {player_score} VS VERMELHO: {banker_score}"
 
-        if resultado == "🟡":
-            resultado_texto = f"🎲 Resultado: EMPATE 🟡 ({player_score}:{banker_score})"
-        else:
-            resultado_texto = f"🎲 Resultado: AZUL 🔵 {player_score} VS VERMELHO 🔴 {banker_score}"
+                if resultado == sinal_ativo["sinal"]:
+                    mensagem_validacao = "ENTROU DINHEIRO🤑"
+                    placar += 1
+                else:
+                    mensagem_validacao = "PERDEMOS NESSA🤧"
+                    placar = 0
 
-        msg = f"""{resultado_texto}
-📊 Resultado do sinal: {resultado_sinal}
-Placar: {placar['✅']}✅"""
-        
-        await bot.send_message(chat_id=CHAT_ID, text=msg)
-        logging.info(f"[VALIDAÇÃO] Resultado enviado | Sinal: {sinal}, Resultado: {resultado}, Resultado ID: {resultado_id}")
-    
+                msg = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']}): {mensagem_validacao}\nPlacar: {placar} acertos"
+                await bot.send_message(chat_id=CHAT_ID, text=msg)
+                logging.info(f"Resultado enviado: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}, Placar: {placar}")
+                sinais_ativos.remove(sinal_ativo)
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
+async def enviar_relatorio():
+    """Envia um relatório periódico da taxa de acertos."""
+    while True:
+        try:
+            msg = f"📈 Relatório: {placar} acertos seguidos"
+            await bot.send_message(chat_id=CHAT_ID, text=msg)
+            logging.info(f"Relatório enviado: {msg}")
+        except TelegramError as e:
+            logging.error(f"Erro ao enviar relatório: {e}")
+        await asyncio.sleep(3600)
+
 async def enviar_placar():
+    """Envia o placar atual de acertos."""
     try:
-        await bot.send_message(chat_id=CHAT_ID, text=f"Placar: {placar['✅']}✅")
+        msg = f"Placar: {placar}✅"
+        await bot.send_message(chat_id=CHAT_ID, text=msg)
+        logging.info(f"Placar enviado: {placar}✅")
     except TelegramError as e:
         logging.error(f"Erro ao enviar placar: {e}")
 
 async def monitorar_resultado():
+    """Monitora a API em tempo real para validar todos os sinais ativos com timeout por sinal."""
     global ultimo_resultado_id
     while True:
         try:
             resultado, resultado_id, player_score, banker_score = await fetch_resultado()
-            if resultado and resultado_id and resultado_id != ultimo_resultado_id:
-                ultimo_resultado_id = resultado_id
-                for sinal_ativo in sinais_ativos[:]:
-                    if sinal_ativo["resultado_id"] == resultado_id:
-                        await enviar_resultado(sinal_ativo["sinal"], resultado, player_score, banker_score, resultado_id)
-                        sinais_ativos.remove(sinal_ativo)
-                        break
-                    elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 120:
-                        sinais_ativos.remove(sinal_ativo)
+            if resultado and resultado_id:
+                if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
+                    ultimo_resultado_id = resultado_id
+                    logging.info(f"Novo resultado detectado: ID {resultado_id}, Resultado {resultado}, Player {player_score}, Banker {banker_score}, Sinais ativos: {len(sinais_ativos)}")
+                    
+                    for sinal_ativo in sinais_ativos[:]:
+                        if sinal_ativo["resultado_id"] == resultado_id:
+                            await enviar_resultado(sinal_ativo["sinal"], resultado, player_score, banker_score, resultado_id)
+                            break
+                        elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 120:  # Timeout de 120 segundos
+                            logging.warning(f"Timeout de 120s para sinal: Padrão {sinal_ativo['padrao_id']}, Resultado ID {sinal_ativo['resultado_id']}")
+                            sinais_ativos.remove(sinal_ativo)
+                else:
+                    logging.debug(f"Resultado repetido: ID {resultado_id}")
+            elif not resultado and resultado_id:
+                logging.warning(f"Resultado inválido ou incompleto: ID {resultado_id}")
             await asyncio.sleep(2)
         except Exception as e:
             logging.error(f"Erro no monitoramento: {e}")
             await asyncio.sleep(5)
 
 async def main():
+    """Loop principal do bot com reconexão."""
     global historico, ultimo_padrao_id, ultimo_resultado_id
+    asyncio.create_task(enviar_relatorio())
     asyncio.create_task(monitorar_resultado())
 
     while True:
@@ -194,13 +235,15 @@ async def main():
                 historico.append(resultado)
                 historico = historico[-10:]
                 ultimo_resultado_id = resultado_id
+                logging.info(f"Histórico atualizado: {historico} (ID: {resultado_id})")
 
                 padroes_ordenados = sorted(PADROES, key=lambda x: len(x["sequencia"]), reverse=True)
                 for padrao in padroes_ordenados:
                     seq = padrao["sequencia"]
                     if len(historico) >= len(seq) and historico[-len(seq):] == seq and padrao["id"] != ultimo_padrao_id:
                         await enviar_placar()
-                        await enviar_sinal(padrao["sinal"], padrao["id"], resultado_id)
+                        sinal = padrao["sinal"]
+                        await enviar_sinal(sinal, padrao["id"], resultado_id)
                         ultimo_padrao_id = padrao["id"]
                         break
 
@@ -216,4 +259,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Bot encerrado manualmente.")
+        logging.info("Bot encerrado pelo usuário")
+    except Exception as e:
+        logging.error(f"Erro fatal no bot: {e}")
