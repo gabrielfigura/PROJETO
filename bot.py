@@ -144,7 +144,7 @@ Entrar: {sinal}
         logging.error(f"Erro ao enviar sinal: {e}")
 
 async def enviar_resultado(sinal, player_score, banker_score, is_tie):
-    """Envia a validação do resultado ao Telegram com o novo formato."""
+    """Envia a validação do resultado ao Telegram com o formato especificado."""
     global placar
     try:
         resultado_texto = f"🎲 Resultado: "
@@ -159,8 +159,7 @@ async def enviar_resultado(sinal, player_score, banker_score, is_tie):
                 placar["✅"] += 1
             else:
                 resultado_sinal = "Não foi dessa🤧"
-                placar["✅"] = 0  # Zera o placar se errar
-                placar["❌"] = 0  # Reinicia erros também para consistência
+                placar["✅"] = 0  # Zera o placar de acertos em caso de erro
 
         msg = f"{resultado_texto}\n📊 Resultado do sinal: {resultado_sinal}\nPlacar: {placar['✅']}✅"
         await bot.send_message(chat_id=CHAT_ID, text=msg)
@@ -181,8 +180,17 @@ async def enviar_relatorio():
             logging.error(f"Erro ao enviar relatório: {e}")
         await asyncio.sleep(3600)  # Enviar a cada hora
 
+async def enviar_placar():
+    """Envia o placar atual de acertos."""
+    try:
+        msg = f"Placar: {placar['✅']}✅"
+        await bot.send_message(chat_id=CHAT_ID, text=msg)
+        logging.info(f"Placar enviado: {placar['✅']}✅")
+    except TelegramError as e:
+        logging.error(f"Erro ao enviar placar: {e}")
+
 async def monitorar_resultado(sinal, padrao_id):
-    """Monitora a API para validar o resultado após enviar o sinal."""
+    """Monitora a API em tempo real para validar o resultado após enviar o sinal."""
     global ultimo_resultado_id, sinal_ativo
     max_wait_time = 60  # Timeout máximo de 60 segundos
     start_time = asyncio.get_event_loop().time()
@@ -198,8 +206,7 @@ async def monitorar_resultado(sinal, padrao_id):
             break
         elif not resultado and resultado_id:
             logging.warning(f"Monitorando: Resultado inválido ou incompleto - ID: {resultado_id}")
-        await asyncio.sleep(5)  # Verifica a cada 5 segundos
-    
+        await asyncio.sleep(2)  # Reduzido para 2 segundos para maior frequência em tempo real
     if sinal_ativo:
         logging.error(f"Timeout de {max_wait_time}s atingido. Sinal {sinal} não validado.")
         sinal_ativo = None
@@ -212,7 +219,7 @@ async def main():
     while True:
         resultado, resultado_id, player_score, banker_score = await fetch_resultado()
         if not resultado or not resultado_id:
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)  # Reduzido para 2 segundos para maior frequência
             continue
 
         if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
@@ -226,6 +233,7 @@ async def main():
             for padrao in padroes_ordenados:
                 seq = padrao["sequencia"]
                 if len(historico) >= len(seq) and historico[-len(seq):] == seq and padrao["id"] != ultimo_padrao_id:
+                    await enviar_placar()  # Envia o placar antes do sinal
                     sinal = padrao["sinal"]
                     await enviar_sinal(sinal, padrao["id"])
                     ultimo_padrao_id = padrao["id"]
@@ -236,7 +244,7 @@ async def main():
         if len(historico) >= 5:
             ultimo_padrao_id = None
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)  # Reduzido para 2 segundos para maior frequência
 
 if __name__ == "__main__":
     try:
