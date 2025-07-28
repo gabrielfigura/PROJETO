@@ -1,5 +1,5 @@
-[APP]
-main=bot.py
-version=1.0
-name=TelegramCasinoBot
-memory=512
+{
+  "name": "bacbo-signal-bot",
+  "type": "bot",
+  "main": "bot_bacbo_final.py"
+}
