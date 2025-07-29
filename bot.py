@@ -26,6 +26,7 @@ placar = {"✅": 0}
 rodadas_desde_erro = 0
 ultima_mensagem_monitoramento = None
 detecao_pausada = False
+sinal_em_processo = False  # Flag para controlar a espera pela validação
 
 # Mapeamento de outcomes para emojis
 OUTCOME_MAP = {
@@ -84,7 +85,7 @@ PADROES_FIXOS = [
 def calcular_probabilidade(historico, sinal, janela=8):
     """Calcula a probabilidade de um sinal com base na tendência dos últimos resultados."""
     if len(historico) < janela:
-        return 0.0  # Retorna 0 se histórico insuficiente para cálculo
+        return 0.0
     janela = list(historico)[-janela:]
     contagem = Counter(janela)
     total = contagem["🔴"] + contagem["🔵"]
@@ -98,7 +99,6 @@ def calcular_probabilidade(historico, sinal, janela=8):
 def detectar_padroes(historico):
     """Detecta padrões dinâmicos ou usa padrões fixos sem limites."""
     padroes = []
-    # Tenta detectar padrões dinâmicos
     for tamanho in range(2, 8):
         if len(historico) >= tamanho:
             sequencia = list(historico)[-tamanho:]
@@ -107,12 +107,11 @@ def detectar_padroes(historico):
                 prob = calcular_probabilidade(historico, sinal, tamanho + 2)
                 if prob > 0.65:
                     padroes.append({"id": hash(str(sequencia)), "sequencia": sequencia, "sinal": sinal, "prob": prob})
-    # Sempre verifica padrões fixos sem limites
     if len(historico) >= 2:
         for padrao in PADROES_FIXOS:
             if len(historico) >= len(padrao["sequencia"]) and list(historico)[-len(padrao["sequencia"]):] == padrao["sequencia"]:
                 padroes.append({"id": padrao["id"], "sequencia": padrao["sequencia"], "sinal": padrao["sinal"], "prob": 0.5})
-    return padroes  # Retorna todos os padrões detectados, sem limite
+    return padroes
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
 async def fetch_resultado():
@@ -161,7 +160,7 @@ async def fetch_resultado():
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
     """Envia uma mensagem de sinal ao Telegram sem Padrão ID."""
-    global ultima_mensagem_monitoramento
+    global ultima_mensagem_monitoramento, sinal_em_processo
     try:
         if ultima_mensagem_monitoramento:
             try:
@@ -188,6 +187,7 @@ Proteger o empate🟡
             "gale_nivel": 0,
             "gale_message_id": None
         })
+        sinal_em_processo = True  # Marca que um sinal está em processo
         return message.message_id
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
@@ -196,7 +196,7 @@ Proteger o empate🟡
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
     """Envia a validação de cada sinal ao Telegram, apagando a mensagem de gale após validação."""
-    global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada
+    global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada, sinal_em_processo
     try:
         for sinal_ativo in sinais_ativos[:]:
             if sinal_ativo["resultado_id"] != resultado_id:
@@ -253,6 +253,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                             logging.info(f"Validação enviada (Erro 1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                             sinais_ativos.remove(sinal_ativo)
                             detecao_pausada = False
+                sinal_em_processo = False  # Libera a detecção após validação
 
                 ultima_mensagem_monitoramento = None
             elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 300:
@@ -265,6 +266,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                         logging.debug(f"Erro ao apagar mensagem de gale obsoleta: {e}")
                 sinais_ativos.remove(sinal_ativo)
                 detecao_pausada = False
+                sinal_em_processo = False  # Libera a detecção se o sinal expirar
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
@@ -304,7 +306,7 @@ async def enviar_relatorio():
 
 async def main():
     """Loop principal do bot com reconexão."""
-    global historico, ultimo_resultado_id, rodadas_desde_erro, detecao_pausada
+    global historico, ultimo_resultado_id, rodadas_desde_erro, detecao_pausada, sinal_em_processo
     asyncio.create_task(enviar_relatorio())
     asyncio.create_task(enviar_monitoramento())
 
@@ -323,9 +325,9 @@ async def main():
                 rodadas_desde_erro += 1
                 await enviar_resultado(resultado, player_score, banker_score, resultado_id)
 
-                if not detecao_pausada and len(historico) >= 2:
+                if not detecao_pausada and len(historico) >= 2 and not sinal_em_processo:
                     padroes = detectar_padroes(historico)
-                    for padrao in padroes:  # Envia sinal para cada padrão detectado, sem limite
+                    for padrao in padroes:
                         await enviar_sinal(sinal=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=padrao["sequencia"])
 
             else:
