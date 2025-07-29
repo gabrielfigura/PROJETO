@@ -79,7 +79,7 @@ PADROES = [
     {"id": 420, "sequencia": ["🔴", "🟡", "🔴"], "sinal": "🔴"},
     {"id": 424, "sequencia": ["🔵", "🟡", "🔵"], "sinal": "🔵"},
     {"id": 525, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 526, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"}  # Novo id para evitar duplicata
+    {"id": 526, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
@@ -184,7 +184,7 @@ Proteger o empate🟡
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
     """Envia a validação de cada sinal ao Telegram após o resultado da próxima rodada."""
-    global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada
+    global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada, placar
     try:
         for sinal_ativo in sinais_ativos[:]:
             # Validar apenas se o resultado é posterior ao sinal
@@ -199,6 +199,13 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                 # Considerar empate (🟡) como acerto
                 if resultado == sinal_ativo["sinal"] or resultado == "🟡":
                     placar["✅"] += 1
+                    # Apagar mensagem de gale, se existir
+                    if sinal_ativo["gale_message_id"]:
+                        try:
+                            await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
+                            logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
+                        except TelegramError as e:
+                            logging.debug(f"Erro ao apagar mensagem de gale: {e}")
                     # Enviar validação com resultados da rodada atual
                     mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
@@ -239,6 +246,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                                     logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
                                 except TelegramError as e:
                                     logging.debug(f"Erro ao apagar mensagem de gale: {e}")
+                            placar["✅"] = 0  # Zerar o placar após erro no 1 gale
                             await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
                             logging.info(f"Validação enviada (Erro 1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                             sinais_ativos.remove(sinal_ativo)
