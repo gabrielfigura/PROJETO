@@ -23,10 +23,10 @@ historico = []
 ultimo_padrao_id = None
 ultimo_resultado_id = None
 sinais_ativos = []
-padrões_ativos = []  # Lista para rastrear padrões em uso
 placar = {"✅": 0}
 rodadas_desde_erro = 0  # Contador para cooldown após erro
 ultima_mensagem_monitoramento = None  # Rastrear ID da mensagem de monitoramento
+detecao_pausada = False  # Controle para pausar detecção de novos sinais
 
 # Mapeamento de outcomes para emojis
 OUTCOME_MAP = {
@@ -142,7 +142,7 @@ def verificar_tendencia(historico, sinal, tamanho_janela=8):
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
     """Envia uma mensagem de sinal ao Telegram com retry, incluindo a sequência de cores."""
-    global ultima_mensagem_monitoramento, padrões_ativos
+    global ultima_mensagem_monitoramento
     try:
         # Apagar a última mensagem de monitoramento, se existir
         if ultima_mensagem_monitoramento:
@@ -153,10 +153,10 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
                 logging.debug(f"Erro ao apagar mensagem de monitoramento: {e}")
             ultima_mensagem_monitoramento = None
 
-        # Verificar se o padrão já está ativo
-        if padrao_id in padrões_ativos:
-            logging.debug(f"Padrão ID {padrao_id} já ativo, ignorando envio de sinal")
-            return None
+        # Verificar se já existe um sinal ativo com o mesmo padrão ID
+        if any(sinal["padrao_id"] == padrao_id for sinal in sinais_ativos):
+            logging.debug(f"Sinal com Padrão ID {padrao_id} já ativo, ignorando.")
+            return
 
         sequencia_str = " ".join(sequencia)
         mensagem = f"""🎯 SINAL ENCONTRADO
@@ -176,16 +176,15 @@ Proteger o empate🟡
             "gale_nivel": 0,  # Inicializa com aposta base
             "gale_message_id": None  # Para rastrear a mensagem de gale
         })
-        padrões_ativos.append(padrao_id)  # Adiciona o padrão à lista de ativos
         return message.message_id
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
-        return None
+        raise
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
     """Envia a validação de cada sinal ao Telegram após o resultado da próxima rodada."""
-    global rodadas_desde_erro, ultima_mensagem_monitoramento, padrões_ativos
+    global rodadas_desde_erro, ultima_mensagem_monitoramento
     try:
         for sinal_ativo in sinais_ativos[:]:
             # Validar apenas se o resultado é posterior ao sinal
@@ -200,23 +199,16 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                 # Considerar empate (🟡) como acerto
                 if resultado == sinal_ativo["sinal"] or resultado == "🟡":
                     placar["✅"] += 1
-                    # Apagar mensagem de gale, se existir
-                    if sinal_ativo["gale_message_id"]:
-                        try:
-                            await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                            logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
-                        except TelegramError as e:
-                            logging.debug(f"Erro ao apagar mensagem de gale: {e}")
-                    # Enviar validação
+                    # Enviar validação com resultados da rodada atual
                     mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                     logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                     sinais_ativos.remove(sinal_ativo)
-                    if sinal_ativo["padrao_id"] in padrões_ativos:
-                        padrões_ativos.remove(sinal_ativo["padrao_id"])  # Remove o padrão da lista de ativos
                 else:
                     if sinal_ativo["gale_nivel"] == 0:
-                        # Primeira perda: enviar mensagem de gale
+                        # Primeira perda: pausar detecção e enviar mensagem de gale
+                        global detecao_pausada
+                        detecao_pausada = True
                         mensagem_gale = "BORA GANHAR NO 1 GALE🎯"
                         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem_gale)
                         sinal_ativo["gale_nivel"] = 1
@@ -224,35 +216,52 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                         sinal_ativo["resultado_id"] = resultado_id  # Atualizar para esperar próximo resultado
                         logging.info(f"Mensagem de gale enviada: {mensagem_gale}, ID: {message.message_id}")
                     else:
-                        # Erro no 1 gale: enviar mensagem de erro
-                        placar["✅"] = 0  # Zera o placar
-                        mensagem_validacao = "NÃO FOI DESSA🤧"
-                        await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
-                        logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
-                        sinais_ativos.remove(sinal_ativo)
-                        if sinal_ativo["gale_message_id"]:
-                            try:
-                                await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                                logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
-                            except TelegramError as e:
-                                logging.debug(f"Erro ao apagar mensagem de gale: {e}")
-                        if sinal_ativo["padrao_id"] in padrões_ativos:
-                            padrões_ativos.remove(sinal_ativo["padrao_id"])  # Remove o padrão da lista de ativos
+                        # Verificar se o 1 gale acertou (mesma cor ou empate)
+                        if resultado == sinal_ativo["sinal"] or resultado == "🟡":
+                            placar["✅"] += 1
+                            # Apagar mensagem de gale
+                            if sinal_ativo["gale_message_id"]:
+                                try:
+                                    await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
+                                    logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
+                                except TelegramError as e:
+                                    logging.debug(f"Erro ao apagar mensagem de gale: {e}")
+                            # Enviar validação com resultados da rodada do 1 gale
+                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                            await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
+                            logging.info(f"Validação enviada (1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
+                            sinais_ativos.remove(sinal_ativo)
+                            global detecao_pausada
+                            detecao_pausada = False  # Retomar detecção após resolver o gale
+                        else:
+                            # Erro no 1 gale
+                            if sinal_ativo["gale_message_id"]:
+                                try:
+                                    await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
+                                    logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
+                                except TelegramError as e:
+                                    logging.debug(f"Erro ao apagar mensagem de gale: {e}")
+                            await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
+                            logging.info(f"Validação enviada (Erro 1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
+                            sinais_ativos.remove(sinal_ativo)
+                            global detecao_pausada
+                            detecao_pausada = False  # Retomar detecção após erro
 
                 # Após validação, retomar monitoramento
                 ultima_mensagem_monitoramento = None
             # Limpar sinais obsoletos (mais de 5 minutos sem validação)
             elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 300:
                 logging.warning(f"Sinal obsoleto removido: Padrão {sinal_ativo['padrao_id']}, Resultado ID: {sinal_ativo['resultado_id']}")
+                # Apagar mensagem de gale, se existir
                 if sinal_ativo["gale_message_id"]:
                     try:
                         await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                         logging.debug(f"Mensagem de gale obsoleta apagada: ID {sinal_ativo['gale_message_id']}")
                     except TelegramError as e:
                         logging.debug(f"Erro ao apagar mensagem de gale obsoleta: {e}")
-                if sinal_ativo["padrao_id"] in padrões_ativos:
-                    padrões_ativos.remove(sinal_ativo["padrao_id"])  # Remove o padrão da lista de ativos
                 sinais_ativos.remove(sinal_ativo)
+                global detecao_pausada
+                detecao_pausada = False  # Retomar detecção se sinal obsoleto
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
 
@@ -295,7 +304,7 @@ async def enviar_relatorio():
 
 async def main():
     """Loop principal do bot com reconexão."""
-    global historico, ultimo_padrao_id, ultimo_resultado_id, rodadas_desde_erro
+    global historico, ultimo_padrao_id, ultimo_resultado_id, rodadas_desde_erro, detecao_pausada
     asyncio.create_task(enviar_relatorio())
     asyncio.create_task(enviar_monitoramento())
 
@@ -318,8 +327,8 @@ async def main():
                 # Verifica se há sinais ativos para validar
                 await enviar_resultado(resultado, player_score, banker_score, resultado_id)
 
-                # Detecta padrão e envia sinal
-                if rodadas_desde_erro >= 3:  # Só enviar sinal após 3 rodadas desde o último erro
+                # Detecta padrão e envia sinal, apenas se detecção não estiver pausada
+                if rodadas_desde_erro >= 3 and not detecao_pausada:  # Só enviar sinal após 3 rodadas e se não pausado
                     padroes_ordenados = sorted(PADROES, key=lambda x: len(x["sequencia"]), reverse=True)
                     for padrao in padroes_ordenados:
                         seq = padrao["sequencia"]
@@ -329,8 +338,9 @@ async def main():
                             continue
                         if (len(historico) >= len(seq) and 
                             historico[-len(seq):] == seq and 
-                            padrao["id"] not in padrões_ativos and 
-                            verificar_tendencia(historico, padrao["sinal"])):
+                            padrao["id"] != ultimo_padrao_id and 
+                            verificar_tendencia(historico, padrao["sinal"]) and
+                            not any(sinal["padrao_id"] == padrao["id"] for sinal in sinais_ativos)):
                             await enviar_sinal(sinal=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=seq)
                             ultimo_padrao_id = padrao["id"]
                             break
