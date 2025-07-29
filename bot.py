@@ -184,7 +184,7 @@ Proteger o empate🟡
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
     """Envia a validação de cada sinal ao Telegram após o resultado da próxima rodada."""
-    global rodadas_desde_erro, ultima_mensagem_monitoramento
+    global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada
     try:
         for sinal_ativo in sinais_ativos[:]:
             # Validar apenas se o resultado é posterior ao sinal
@@ -207,7 +207,6 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                 else:
                     if sinal_ativo["gale_nivel"] == 0:
                         # Primeira perda: pausar detecção e enviar mensagem de gale
-                        global detecao_pausada
                         detecao_pausada = True
                         mensagem_gale = "BORA GANHAR NO 1 GALE🎯"
                         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem_gale)
@@ -231,7 +230,6 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                             await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                             logging.info(f"Validação enviada (1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                             sinais_ativos.remove(sinal_ativo)
-                            global detecao_pausada
                             detecao_pausada = False  # Retomar detecção após resolver o gale
                         else:
                             # Erro no 1 gale
@@ -244,7 +242,6 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                             await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
                             logging.info(f"Validação enviada (Erro 1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                             sinais_ativos.remove(sinal_ativo)
-                            global detecao_pausada
                             detecao_pausada = False  # Retomar detecção após erro
 
                 # Após validação, retomar monitoramento
@@ -260,7 +257,6 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     except TelegramError as e:
                         logging.debug(f"Erro ao apagar mensagem de gale obsoleta: {e}")
                 sinais_ativos.remove(sinal_ativo)
-                global detecao_pausada
                 detecao_pausada = False  # Retomar detecção se sinal obsoleto
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
