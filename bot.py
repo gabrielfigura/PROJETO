@@ -1,3 +1,5 @@
+Actualizado 
+
 import asyncio
 import aiohttp
 import logging
@@ -34,16 +36,16 @@ OUTCOME_MAP = {
     "Tie": "🟡"
 }
 
-# Padrões (filtrados para sequências com 3 ou mais resultados)
+# Padrões
 PADROES = [
- {"id": 10, "sequencia": ["🔵", "🔴", "🔵"], "sinal": "🔴"},
-{"id": 11, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔵"},
+ {"id": 10, "sequencia": ["🔵", "🔴"], "sinal": "🔵"},
+{"id": 11, "sequencia": ["🔴", "🔵"], "sinal": "🔴"},
 {"id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"},
 {"id": 14, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
 {"id": 15, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
   {"id": 16, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
-  {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-  {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+  {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+  {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
   {"id": 19, "sequencia": ["🔴", "🔵", "🔴", "🔴"], "sinal": "🔴"},
   {"id": 20, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"},
 {"id": 21, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"},
@@ -52,24 +54,33 @@ PADROES = [
 {"id": 24, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
 {"id": 25, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
 {"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
-{"id": 27, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔴"},
-{"id": 28, "sequencia": ["🔵", "🔵", "🔵"], "sinal": "🔵"},
-{"id": 29, "sequencia": ["🔴", "🔵", "🔵"], "sinal": "🔵"},
-{"id": 30, "sequencia": ["🔵", "🔴", "🔴"], "sinal": "🔴"},
 {"id": 31, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔴"},
-{"id": 32, "sequencia": ["🔴", "🟡", "🔴"], "sinal": "🔴"},
-{"id": 33, "sequencia": ["🔵", "🟡", "🔵"], "sinal": "🔵"},
-{"id": 34, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔴"},
+{"id": 34, "sequencia": ["🔵", "🔵", "🔵"], "sinal": "🔵"},
 {"id": 35, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
 {"id": 36, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
-{"id": 37, "sequencia": ["🔵", "🔴", "🔴", "🔴"], "sinal": "🔴"},
-{"id": 38, "sequencia": ["🔴", "🔵", "🔵", "🔵"], "sinal": "🔵"},
 {"id": 39, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "sinal": "🔴"},
     {"id": 40, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "sinal": "🔵"},
 {"id": 41, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "sinal": "🔴"},
     {"id": 42, "sequencia": ["🔵", "🔴", "🟡", "🔵"], "sinal": "🔵"},
 {"id": 43, "sequencia": ["🔴", "🔴", "🔵", "🟡"], "sinal": "🔴"},
-    {"id": 44, "sequencia": ["🔵", "🔵", "🔴", "🟡"], "sinal": "🔵"}
+    {"id": 44, "sequencia": ["🔵", "🔵", "🔴", "🟡"], "sinal": "🔵"},
+  {"id": 45, "sequencia": ["🔵", "🟡", "🟡"], "sinal": "🔵"},
+  {"id": 46, "sequencia": ["🔴", "🟡", "🟡"], "sinal": "🔴"},
+{"id": 1, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
+{"id": 2, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+{"id": 3, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+{"id": 4, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+{"id": 5, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
+{"id": 6, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+{"id": 7, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+{"id": 8, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
+{"id": 9, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
+{"id": 249, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔵"},
+{"id": 150, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔴"},
+{"id": 420, "sequencia": ["🔴", "🟡", "🔴"], "sinal": "🔵"},
+{"id": 424, "sequencia": ["🔵", "🟡", "🔵"], "sinal": "🔴"},
+{"id": 525, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+{"id": 525, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
