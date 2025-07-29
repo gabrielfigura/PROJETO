@@ -166,7 +166,9 @@ Proteger o empate🟡
             "padrao_id": padrao_id,
             "resultado_id": resultado_id,
             "sequencia": sequencia,
-            "enviado_em": asyncio.get_event_loop().time()
+            "enviado_em": asyncio.get_event_loop().time(),
+            "gale_nivel": 0,  # Inicializa com aposta base
+            "gale_message_id": None  # Para rastrear a mensagem de gale
         })
         return message.message_id
     except TelegramError as e:
@@ -191,22 +193,58 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                 # Considerar empate (🟡) como acerto
                 if resultado == sinal_ativo["sinal"] or resultado == "🟡":
                     placar["✅"] += 1
-                    mensagem_validacao = mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                    # Apagar mensagem de gale, se existir
+                    if sinal_ativo["gale_message_id"]:
+                        try:
+                            await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
+                            logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
+                        except TelegramError as e:
+                            logging.debug(f"Erro ao apagar mensagem de gale: {e}")
+                    # Enviar validação padrão
+                    mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                    if sinal_ativo["gale_nivel"] == 1:
+                        mensagem_validacao += f"\n✅ Acerto no 1 gale!"
                     rodadas_desde_erro = 0  # Resetar cooldown após acerto
+                    await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
+                    logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
+                    sinais_ativos.remove(sinal_ativo)
                 else:
-                    placar["✅"] = 0  # Zera o placar de acertos em caso de erro
-                    mensagem_validacao = "NÃO FOI DESSA🤧"
-                    rodadas_desde_erro = 0  # Resetar cooldown após erro
-
-                await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
-                logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
-                sinais_ativos.remove(sinal_ativo)
+                    if sinal_ativo["gale_nivel"] == 0:
+                        # Primeira perda: enviar mensagem de gale
+                        mensagem_gale = "BORA GANHAR NO 1 GALE🎯"
+                        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem_gale)
+                        sinal_ativo["gale_nivel"] = 1
+                        sinal_ativo["gale_message_id"] = message.message_id
+                        sinal_ativo["resultado_id"] = resultado_id  # Atualizar para esperar próximo resultado
+                        logging.info(f"Mensagem de gale enviada: {mensagem_gale}, ID: {message.message_id}")
+                    else:
+                        # Erro no 1 gale: enviar mensagem de erro
+                        placar["✅"] = 0  # Zera o placar
+                        mensagem_validacao = f"NÃO FOI DESSA🤧\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                        rodadas_desde_erro = 0  # Resetar cooldown após erro
+                        await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
+                        logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
+                        sinais_ativos.remove(sinal_ativo)
+                        # Apagar mensagem de gale, se existir
+                        if sinal_ativo["gale_message_id"]:
+                            try:
+                                await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
+                                logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
+                            except TelegramError as e:
+                                logging.debug(f"Erro ao apagar mensagem de gale: {e}")
 
                 # Após validação, retomar monitoramento
                 ultima_mensagem_monitoramento = None
             # Limpar sinais obsoletos (mais de 5 minutos sem validação)
             elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 300:
                 logging.warning(f"Sinal obsoleto removido: Padrão {sinal_ativo['padrao_id']}, Resultado ID: {sinal_ativo['resultado_id']}")
+                # Apagar mensagem de gale, se existir
+                if sinal_ativo["gale_message_id"]:
+                    try:
+                        await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
+                        logging.debug(f"Mensagem de gale obsoleta apagada: ID {sinal_ativo['gale_message_id']}")
+                    except TelegramError as e:
+                        logging.debug(f"Erro ao apagar mensagem de gale obsoleta: {e}")
                 sinais_ativos.remove(sinal_ativo)
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
