@@ -34,32 +34,85 @@ OUTCOME_MAP = {
     "Tie": "🟡"
 }
 
+# Padrões fixos como fallback
+PADROES_FIXOS = [
+    {"id": 10, "sequencia": ["🔵", "🔴"], "sinal": "🔵"},
+    {"id": 11, "sequencia": ["🔴", "🔵"], "sinal": "🔴"},
+    {"id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 14, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 15, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
+    {"id": 16, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
+    {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 19, "sequencia": ["🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 20, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 21, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 22, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 23, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 24, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 25, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 31, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 34, "sequencia": ["🔵", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 35, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
+    {"id": 36, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
+    {"id": 39, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 40, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 41, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "sinal": "🔴"},
+    {"id": 42, "sequencia": ["🔵", "🔴", "🟡", "🔵"], "sinal": "🔵"},
+    {"id": 43, "sequencia": ["🔴", "🔴", "🔵", "🟡"], "sinal": "🔴"},
+    {"id": 44, "sequencia": ["🔵", "🔵", "🔴", "🟡"], "sinal": "🔵"},
+    {"id": 45, "sequencia": ["🔵", "🟡", "🟡"], "sinal": "🔵"},
+    {"id": 46, "sequencia": ["🔴", "🟡", "🟡"], "sinal": "🔴"},
+    {"id": 1, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
+    {"id": 2, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 3, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 4, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 5, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 6, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 7, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 8, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
+    {"id": 9, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 249, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 150, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 420, "sequencia": ["🔴", "🟡", "🔴"], "sinal": "🔴"},
+    {"id": 424, "sequencia": ["🔵", "🟡", "🔵"], "sinal": "🔵"},
+    {"id": 525, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 526, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"}
+]
+
 def calcular_probabilidade(historico, sinal, janela=8):
     """Calcula a probabilidade de um sinal com base na tendência dos últimos resultados."""
     if len(historico) < janela:
-        return 0.5  # Probabilidade neutra se histórico insuficiente
+        return 0.0  # Retorna 0 se histórico insuficiente para cálculo
     janela = list(historico)[-janela:]
     contagem = Counter(janela)
-    total = contagem["🔴"] + contagem["🔵"]  # Ignorar empates na contagem base
+    total = contagem["🔴"] + contagem["🔵"]
     if total == 0:
-        return 0.5
+        return 0.0
     proporcao = contagem[sinal] / total if sinal in contagem else 0
-    # Ajustar com base em empates como confirmadores (se 🟡 for recente, aumentar confiança)
     if janela[-1] == "🟡" and sinal in janela[-2:]:
-        proporcao += 0.1  # Bônus de 10% se empate recente confirma tendência
-    return min(proporcao, 1.0)  # Limitar a 100%
+        proporcao += 0.1
+    return min(proporcao, 1.0)
 
 def detectar_padroes(historico):
-    """Detecta os melhores padrões nos últimos 2 a 7 resultados com base em probabilidade."""
+    """Detecta padrões dinâmicos ou usa padrões fixos se probabilidades não puderem ser calculadas."""
+    if len(historico) < 2:
+        return []  # Sem histórico suficiente
     padroes = []
-    for tamanho in range(2, 8):  # Testa padrões de 2 a 7 resultados
+    # Tenta detectar padrões dinâmicos
+    for tamanho in range(2, 8):
         if len(historico) >= tamanho:
             sequencia = list(historico)[-tamanho:]
             sinal = sequencia[-1] if sequencia[-1] in ["🔴", "🔵"] else None
             if sinal:
                 prob = calcular_probabilidade(historico, sinal, tamanho + 2)
-                if prob > 0.6:  # Confiança mínima de 60%
+                if prob > 0.65:
                     padroes.append({"id": hash(str(sequencia)), "sequencia": sequencia, "sinal": sinal, "prob": prob})
+    if not padroes and len(historico) >= 2:  # Fallback para padrões fixos se não houver probabilidade suficiente
+        for padrao in PADROES_FIXOS:
+            if len(historico) >= len(padrao["sequencia"]) and list(historico)[-len(padrao["sequencia"]):] == padrao["sequencia"]:
+                padroes.append({"id": padrao["id"], "sequencia": padrao["sequencia"], "sinal": padrao["sinal"], "prob": 0.5})
     return sorted(padroes, key=lambda x: x["prob"], reverse=True)[:1]  # Retorna o padrão mais provável
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
@@ -108,7 +161,7 @@ async def fetch_resultado():
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
-    """Envia uma mensagem de sinal ao Telegram com retry, incluindo a sequência de cores."""
+    """Envia uma mensagem de sinal ao Telegram sem Padrão ID."""
     global ultima_mensagem_monitoramento
     try:
         if ultima_mensagem_monitoramento:
@@ -121,13 +174,12 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
 
         sequencia_str = " ".join(sequencia)
         mensagem = f"""🎯 SINAL ENCONTRADO
-Padrão ID: {padrao_id}
 Sequência: {sequencia_str}
 Entrar: {sinal}
 Proteger o empate🟡
 ⏳ Aposte agora!"""
         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem)
-        logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}")
+        logging.info(f"Sinal enviado: Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}")
         sinais_ativos.append({
             "sinal": sinal,
             "padrao_id": padrao_id,
@@ -144,7 +196,7 @@ Proteger o empate🟡
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
-    """Envia a validação de cada sinal ao Telegram após o resultado da próxima rodada."""
+    """Envia a validação de cada sinal ao Telegram, apagando a mensagem de gale automaticamente no 1 gale."""
     global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada
     try:
         for sinal_ativo in sinais_ativos[:]:
@@ -158,7 +210,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                 sequencia_str = " ".join(sinal_ativo["sequencia"])
                 if resultado == sinal_ativo["sinal"] or resultado == "🟡":
                     placar["✅"] += 1
-                    mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                    mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                     logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                     sinais_ativos.remove(sinal_ativo)
@@ -180,7 +232,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                                     logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
                                 except TelegramError as e:
                                     logging.debug(f"Erro ao apagar mensagem de gale: {e}")
-                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
                             await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                             logging.info(f"Validação enviada (1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                             sinais_ativos.remove(sinal_ativo)
@@ -199,7 +251,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
 
                 ultima_mensagem_monitoramento = None
             elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 300:
-                logging.warning(f"Sinal obsoleto removido: Padrão {sinal_ativo['padrao_id']}, Resultado ID: {sinal_ativo['resultado_id']}")
+                logging.warning(f"Sinal obsoleto removido: Sequência {sinal_ativo['sequencia']}, Resultado ID: {sinal_ativo['resultado_id']}")
                 if sinal_ativo["gale_message_id"]:
                     try:
                         await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
@@ -270,7 +322,7 @@ async def main():
                     padroes = detectar_padroes(historico)
                     for padrao in padroes:
                         await enviar_sinal(sinal=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=padrao["sequencia"])
-                        break  # Envia apenas o padrão mais provável
+                        break
 
             else:
                 logging.debug(f"Resultado repetido ignorado: ID {resultado_id}")
