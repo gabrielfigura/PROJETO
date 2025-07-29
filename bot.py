@@ -191,7 +191,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                 # Considerar empate (🟡) como acerto
                 if resultado == sinal_ativo["sinal"] or resultado == "🟡":
                     placar["✅"] += 1
-                    mensagem_validacao = f"{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str}): ENTROU DINHEIRO🤑\nPlacar: {placar['✅']}✅"
+                    mensagem_validacao = mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
                     rodadas_desde_erro = 0  # Resetar cooldown após acerto
                 else:
                     placar["✅"] = 0  # Zera o placar de acertos em caso de erro
