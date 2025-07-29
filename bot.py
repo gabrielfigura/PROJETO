@@ -23,6 +23,7 @@ historico = []
 ultimo_padrao_id = None
 ultimo_resultado_id = None
 sinais_ativos = []
+padrões_ativos = []  # Lista para rastrear padrões em uso
 placar = {"✅": 0}
 rodadas_desde_erro = 0  # Contador para cooldown após erro
 ultima_mensagem_monitoramento = None  # Rastrear ID da mensagem de monitoramento
@@ -141,7 +142,7 @@ def verificar_tendencia(historico, sinal, tamanho_janela=8):
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
     """Envia uma mensagem de sinal ao Telegram com retry, incluindo a sequência de cores."""
-    global ultima_mensagem_monitoramento
+    global ultima_mensagem_monitoramento, padrões_ativos
     try:
         # Apagar a última mensagem de monitoramento, se existir
         if ultima_mensagem_monitoramento:
@@ -151,6 +152,11 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
             except TelegramError as e:
                 logging.debug(f"Erro ao apagar mensagem de monitoramento: {e}")
             ultima_mensagem_monitoramento = None
+
+        # Verificar se o padrão já está ativo
+        if padrao_id in padrões_ativos:
+            logging.debug(f"Padrão ID {padrao_id} já ativo, ignorando envio de sinal")
+            return None
 
         sequencia_str = " ".join(sequencia)
         mensagem = f"""🎯 SINAL ENCONTRADO
@@ -170,15 +176,16 @@ Proteger o empate🟡
             "gale_nivel": 0,  # Inicializa com aposta base
             "gale_message_id": None  # Para rastrear a mensagem de gale
         })
+        padrões_ativos.append(padrao_id)  # Adiciona o padrão à lista de ativos
         return message.message_id
     except TelegramError as e:
         logging.error(f"Erro ao enviar sinal: {e}")
-        raise
+        return None
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
     """Envia a validação de cada sinal ao Telegram após o resultado da próxima rodada."""
-    global rodadas_desde_erro, ultima_mensagem_monitoramento
+    global rodadas_desde_erro, ultima_mensagem_monitoramento, padrões_ativos
     try:
         for sinal_ativo in sinais_ativos[:]:
             # Validar apenas se o resultado é posterior ao sinal
@@ -200,14 +207,13 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                             logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
                         except TelegramError as e:
                             logging.debug(f"Erro ao apagar mensagem de gale: {e}")
-                    # Enviar validação padrão
+                    # Enviar validação
                     mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
-                    if sinal_ativo["gale_nivel"] == 1:
-                        mensagem_validacao += f"\n✅ Acerto no 1 gale!"
-                    rodadas_desde_erro = 0  # Resetar cooldown após acerto
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                     logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                     sinais_ativos.remove(sinal_ativo)
+                    if sinal_ativo["padrao_id"] in padrões_ativos:
+                        padrões_ativos.remove(sinal_ativo["padrao_id"])  # Remove o padrão da lista de ativos
                 else:
                     if sinal_ativo["gale_nivel"] == 0:
                         # Primeira perda: enviar mensagem de gale
@@ -220,31 +226,32 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     else:
                         # Erro no 1 gale: enviar mensagem de erro
                         placar["✅"] = 0  # Zera o placar
-                        mensagem_validacao = f"NÃO FOI DESSA🤧\n{resultado_texto}\n📊 Resultado do sinal (Padrão {sinal_ativo['padrao_id']} Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
-                        rodadas_desde_erro = 0  # Resetar cooldown após erro
+                        mensagem_validacao = "NÃO FOI DESSA🤧"
                         await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                         logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                         sinais_ativos.remove(sinal_ativo)
-                        # Apagar mensagem de gale, se existir
                         if sinal_ativo["gale_message_id"]:
                             try:
                                 await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                                 logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
                             except TelegramError as e:
                                 logging.debug(f"Erro ao apagar mensagem de gale: {e}")
+                        if sinal_ativo["padrao_id"] in padrões_ativos:
+                            padrões_ativos.remove(sinal_ativo["padrao_id"])  # Remove o padrão da lista de ativos
 
                 # Após validação, retomar monitoramento
                 ultima_mensagem_monitoramento = None
             # Limpar sinais obsoletos (mais de 5 minutos sem validação)
             elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 300:
                 logging.warning(f"Sinal obsoleto removido: Padrão {sinal_ativo['padrao_id']}, Resultado ID: {sinal_ativo['resultado_id']}")
-                # Apagar mensagem de gale, se existir
                 if sinal_ativo["gale_message_id"]:
                     try:
                         await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                         logging.debug(f"Mensagem de gale obsoleta apagada: ID {sinal_ativo['gale_message_id']}")
                     except TelegramError as e:
                         logging.debug(f"Erro ao apagar mensagem de gale obsoleta: {e}")
+                if sinal_ativo["padrao_id"] in padrões_ativos:
+                    padrões_ativos.remove(sinal_ativo["padrao_id"])  # Remove o padrão da lista de ativos
                 sinais_ativos.remove(sinal_ativo)
     except TelegramError as e:
         logging.error(f"Erro ao enviar resultado: {e}")
@@ -322,7 +329,7 @@ async def main():
                             continue
                         if (len(historico) >= len(seq) and 
                             historico[-len(seq):] == seq and 
-                            padrao["id"] != ultimo_padrao_id and 
+                            padrao["id"] not in padrões_ativos and 
                             verificar_tendencia(historico, padrao["sinal"])):
                             await enviar_sinal(sinal=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=seq)
                             ultimo_padrao_id = padrao["id"]
