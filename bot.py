@@ -35,7 +35,7 @@ OUTCOME_MAP = {
     "Tie": "🟡"
 }
 
-# Padrões (corrigidos para remover duplicatas de id)
+# Padrões
 PADROES = [
     {"id": 10, "sequencia": ["🔵", "🔴"], "sinal": "🔵"},
     {"id": 11, "sequencia": ["🔴", "🔵"], "sinal": "🔴"},
@@ -137,7 +137,7 @@ def verificar_tendencia(historico, sinal, tamanho_janela=8):
         return True  # Sem resultados válidos, aceitar o sinal
     proporcao = contagem[sinal] / total
     logging.debug(f"Tendência: {sinal} aparece {contagem[sinal]}/{total} ({proporcao:.2%})")
-    return proporcao >= 0.6  # Aceitar sinal se ele representa 60% ou mais
+    return True  # Desativado temporariamente para testes
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
@@ -211,6 +211,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                     logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                     sinais_ativos.remove(sinal_ativo)
+                    detecao_pausada = False  # Garantir que a detecção seja reativada
                 else:
                     if sinal_ativo["gale_nivel"] == 0:
                         # Primeira perda: pausar detecção e enviar mensagem de gale
@@ -316,7 +317,7 @@ async def main():
         try:
             resultado, resultado_id, player_score, banker_score = await fetch_resultado()
             if not resultado or not resultado_id:
-                await asyncio.sleep(2)  # Reduzido de 5 para 2 segundos
+                await asyncio.sleep(2)
                 continue
 
             if ultimo_resultado_id is None or resultado_id != ultimo_resultado_id:
@@ -332,22 +333,25 @@ async def main():
                 await enviar_resultado(resultado, player_score, banker_score, resultado_id)
 
                 # Detecta padrão e envia sinal, apenas se detecção não estiver pausada
-                if not detecao_pausada:  # Removido rodadas_desde_erro >= 3
+                if not detecao_pausada:
+                    logging.debug(f"Detecção de padrões ativa. Histórico: {historico}")
                     padroes_ordenados = sorted(PADROES, key=lambda x: len(x["sequencia"]), reverse=True)
                     for padrao in padroes_ordenados:
                         seq = padrao["sequencia"]
-                        # Ignorar sinais após empate, a menos que o padrão tenha 5 ou mais resultados
-                        if len(historico) >= 1 and historico[-1] == "🟡" and len(seq) < 5:
-                            logging.debug(f"Sinal ignorado: Último resultado é empate e padrão {padrao['id']} tem menos de 5 resultados")
-                            continue
+                        logging.debug(f"Verificando padrão ID {padrao['id']}: Sequência {seq}")
                         if (len(historico) >= len(seq) and 
                             historico[-len(seq):] == seq and 
                             padrao["id"] != ultimo_padrao_id and 
                             verificar_tendencia(historico, padrao["sinal"]) and
                             not any(sinal["padrao_id"] == padrao["id"] for sinal in sinais_ativos)):
+                            logging.debug(f"Padrão ID {padrao['id']} detectado! Enviando sinal.")
                             await enviar_sinal(sinal=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=seq)
                             ultimo_padrao_id = padrao["id"]
                             break
+                        else:
+                            logging.debug(f"Padrão ID {padrao['id']} não corresponde ou está bloqueado.")
+                    else:
+                        logging.debug("Nenhum padrão correspondente encontrado.")
 
                 if len(historico) >= 5:
                     ultimo_padrao_id = None
@@ -355,7 +359,7 @@ async def main():
             else:
                 logging.debug(f"Resultado repetido ignorado: ID {resultado_id}")
 
-            await asyncio.sleep(2)  # Reduzido de 5 para 2 segundos
+            await asyncio.sleep(2)
         except Exception as e:
             logging.error(f"Erro no loop principal: {e}")
             await asyncio.sleep(10)
