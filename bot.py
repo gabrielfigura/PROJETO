@@ -96,9 +96,7 @@ def calcular_probabilidade(historico, sinal, janela=8):
     return min(proporcao, 1.0)
 
 def detectar_padroes(historico):
-    """Detecta padrões dinâmicos ou usa padrões fixos se probabilidades não puderem ser calculadas."""
-    if len(historico) < 2:
-        return []  # Sem histórico suficiente
+    """Detecta padrões dinâmicos ou usa padrões fixos sem limites."""
     padroes = []
     # Tenta detectar padrões dinâmicos
     for tamanho in range(2, 8):
@@ -109,11 +107,12 @@ def detectar_padroes(historico):
                 prob = calcular_probabilidade(historico, sinal, tamanho + 2)
                 if prob > 0.65:
                     padroes.append({"id": hash(str(sequencia)), "sequencia": sequencia, "sinal": sinal, "prob": prob})
-    if not padroes and len(historico) >= 2:  # Fallback para padrões fixos se não houver probabilidade suficiente
+    # Sempre verifica padrões fixos sem limites
+    if len(historico) >= 2:
         for padrao in PADROES_FIXOS:
             if len(historico) >= len(padrao["sequencia"]) and list(historico)[-len(padrao["sequencia"]):] == padrao["sequencia"]:
                 padroes.append({"id": padrao["id"], "sequencia": padrao["sequencia"], "sinal": padrao["sinal"], "prob": 0.5})
-    return sorted(padroes, key=lambda x: x["prob"], reverse=True)[:1]  # Retorna o padrão mais provável
+    return padroes  # Retorna todos os padrões detectados, sem limite
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
 async def fetch_resultado():
@@ -196,7 +195,7 @@ Proteger o empate🟡
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
 async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
-    """Envia a validação de cada sinal ao Telegram, apagando a mensagem de gale automaticamente no 1 gale."""
+    """Envia a validação de cada sinal ao Telegram, apagando a mensagem de gale após validação."""
     global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada
     try:
         for sinal_ativo in sinais_ativos[:]:
@@ -212,6 +211,12 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     placar["✅"] += 1
                     mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
+                    if sinal_ativo["gale_message_id"]:
+                        try:
+                            await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
+                            logging.debug(f"Mensagem de gale apagada após validação: ID {sinal_ativo['gale_message_id']}")
+                        except TelegramError as e:
+                            logging.debug(f"Erro ao apagar mensagem de gale: {e}")
                     logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                     sinais_ativos.remove(sinal_ativo)
                 else:
@@ -226,25 +231,25 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     else:
                         if resultado == sinal_ativo["sinal"] or resultado == "🟡":
                             placar["✅"] += 1
+                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
+                            await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                             if sinal_ativo["gale_message_id"]:
                                 try:
                                     await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                                    logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
+                                    logging.debug(f"Mensagem de gale apagada após validação: ID {sinal_ativo['gale_message_id']}")
                                 except TelegramError as e:
                                     logging.debug(f"Erro ao apagar mensagem de gale: {e}")
-                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 Resultado do sinal (Sequência: {sequencia_str})\nPlacar: {placar['✅']}✅"
-                            await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                             logging.info(f"Validação enviada (1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                             sinais_ativos.remove(sinal_ativo)
                             detecao_pausada = False
                         else:
+                            await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
                             if sinal_ativo["gale_message_id"]:
                                 try:
                                     await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
-                                    logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
+                                    logging.debug(f"Mensagem de gale apagada após validação: ID {sinal_ativo['gale_message_id']}")
                                 except TelegramError as e:
                                     logging.debug(f"Erro ao apagar mensagem de gale: {e}")
-                            await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
                             logging.info(f"Validação enviada (Erro 1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                             sinais_ativos.remove(sinal_ativo)
                             detecao_pausada = False
@@ -320,9 +325,8 @@ async def main():
 
                 if not detecao_pausada and len(historico) >= 2:
                     padroes = detectar_padroes(historico)
-                    for padrao in padroes:
+                    for padrao in padroes:  # Envia sinal para cada padrão detectado, sem limite
                         await enviar_sinal(sinal=padrao["sinal"], padrao_id=padrao["id"], resultado_id=resultado_id, sequencia=padrao["sequencia"])
-                        break
 
             else:
                 logging.debug(f"Resultado repetido ignorado: ID {resultado_id}")
