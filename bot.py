@@ -87,7 +87,7 @@ PADROES = [
     {"id": 424, "sequencia": ["🔵", "🟡", "🔵"], "sinal": "🔵"},
     {"id": 525, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 526, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 103, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 306, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
     {"id": 202, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
     {"id": 31, "sequencia": ["🔴", "🟡", "🔴", "🟡"], "sinal": "🔴"},
     {"id": 40, "sequencia": ["🟡", "🔴", "🟡", "🔴"], "sinal": "🔵"},
@@ -104,7 +104,9 @@ PADROES = [
     {"id": 157, "sequencia": ["🔴", "🔵", "🔴"], "sinal": "🔴"},
     {"id": 160, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴"},
     {"id": 144, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 244, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"}
+    {"id": 244, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 301, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 302, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
@@ -209,7 +211,8 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
 async def enviar_placar():
     """Envia o placar atualizado."""
     try:
-        mensagem_placar = f"🎯RESULTADOS DO CLEVER🎯\nGANHOS SEGUIDOS: {placar['ganhos_seguidos']}🤑\nGANHOS NO 1•GALE: {placar['ganhos_gale1']}🤌\nGANHOS NO 2•GALE: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nPRECISÃO:{placar['precisao']:.2f}%"
+        total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2']
+        mensagem_placar = f"🎯RESULTADOS DO CLEVER🎯\nGANHOS SEGUIDOS: {placar['ganhos_seguidos']}🤑\nGANHOS NO 1•GALE: {placar['ganhos_gale1']}🤌\nGANHOS NO 2•GALE: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\nERRAMOS APENAS {placar['losses']} SINAL❌\nPRECISÃO:{placar['precisao']:.2f}%"
         await bot.send_message(chat_id=CHAT_ID, text=mensagem_placar)
         logging.info(f"Placar enviado: {mensagem_placar}")
     except TelegramError as e:
@@ -283,8 +286,6 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                             except TelegramError as e:
                                 logging.debug(f"Erro ao apagar mensagem de 2 gale: {e}")
                         await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
-                        mensagem_validacao = f"📊 RESULTADOS DO SINAL: PADRÃO {sinal_ativo['padrao_id']} \n➡️ SEQUÊNCIA: {sequencia_str}\n🎲 RESULTADOS: 🔵: {player_score}  🔴: {banker_score}"
-                        await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                         logging.info(f"Validação enviada (Erro 2 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                         # Enviar placar após loss
                         await enviar_placar()
@@ -338,7 +339,8 @@ async def enviar_relatorio():
     """Envia um relatório periódico com o placar."""
     while True:
         try:
-            msg = f"📈 Relatório: Bot em operação\n🎯RESULTADOS DO CLEVER🎯\nGANHOS SEGUIDOS: {placar['ganhos_seguidos']}🤑\nGANHOS NO 1•GALE: {placar['ganhos_gale1']}🤌\nGANHOS NO 2•GALE: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nPRECISÃO:{placar['precisao']:.2f}%"
+            total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2']
+            msg = f"📈 Relatório: Bot em operação\n🎯RESULTADOS DO CLEVER🎯\nGANHOS SEGUIDOS: {placar['ganhos_seguidos']}🤑\nGANHOS NO 1•GALE: {placar['ganhos_gale1']}🤌\nGANHOS NO 2•GALE: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\nERRAMOS APENAS {placar['losses']} SINAL❌\nPRECISÃO:{placar['precisao']:.2f}%"
             await bot.send_message(chat_id=CHAT_ID, text=msg)
             logging.info(f"Relatório enviado: {msg}")
         except TelegramError as e:
