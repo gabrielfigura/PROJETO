@@ -39,47 +39,40 @@ OUTCOME_MAP = {
 PADROES = [
      {"id": 10, "sequencia": ["🔵", "🔴"], "sinal": "🔵"},
     {"id": 11, "sequencia": ["🔴", "🔵"], "sinal": "🔴"},
-    {"id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-    {"id": 14, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 13, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 14, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴"},
     {"id": 15, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
     {"id": 16, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
-    {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
     {"id": 19, "sequencia": ["🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
     {"id": 20, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-    {"id": 21, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 22, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 23, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-    {"id": 24, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
-    {"id": 25, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 31, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔵"},
-    {"id": 34, "sequencia": ["🔵", "🔵", "🔵"], "sinal": "🔴"},
-    {"id": 35, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
-    {"id": 36, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
+    {"id": 21, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 22, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 25, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 31, "sequencia": ["🔴", "🔴"], "sinal": "🔵"},
+    {"id": 34, "sequencia": ["🔵", "🔵"], "sinal": "🔴"},
+    {"id": 35, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 36, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔴"], "sinal": "🔵"},
     {"id": 39, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 40, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "sinal": "🔴"},
     {"id": 41, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "sinal": "🔴"},
     {"id": 42, "sequencia": ["🔵", "🔴", "🟡", "🔵"], "sinal": "🔵"},
-    {"id": 43, "sequencia": ["🔴", "🔴", "🔵", "🟡"], "sinal": "🔴"},
-    {"id": 44, "sequencia": ["🔵", "🔵", "🔴", "🟡"], "sinal": "🔵"},
-    {"id": 45, "sequencia": ["🔵", "🟡", "🟡"], "sinal": "🔵"},
-    {"id": 46, "sequencia": ["🔴", "🟡", "🟡"], "sinal": "🔴"},
+    {"id": 43, "sequencia": ["🔴", "🟡", "🔵"], "sinal": "🔵"},
+    {"id": 44, "sequencia": ["🔵", "🟡", "🔴"], "sinal": "🔴"},
+    {"id": 45, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 46, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 1, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
     {"id": 2, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
     {"id": 3, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 4, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
     {"id": 5, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
     {"id": 6, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 7, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"},
     {"id": 8, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
     {"id": 9, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
     {"id": 249, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 150, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 420, "sequencia": ["🔴", "🟡", "🔴"], "sinal": "🔴"},
-    {"id": 424, "sequencia": ["🔵", "🟡", "🔵"], "sinal": "🔵"},
-    {"id": 525, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 526, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"}
+    {"id": 150, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), 
@@ -175,8 +168,6 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
 
         sequencia_str = " ".join(sequencia)
         mensagem = f"""💡CLEVER ANALISOU💡
-🆔PADÃO ID: {padrao_id}
-➡️SEQUÊNCIA: {sequencia_str}
 🧠TENDÊNCIA NO: {sinal}
 🛡️PROTEGE SEMPRE O TIE🟡
 🤑VAI ENTRAR DINHEIRO🤑"""
@@ -219,7 +210,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                             logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
                         except TelegramError as e:
                             logging.debug(f"Erro ao apagar mensagem de gale: {e}")
-                    mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 RESULTADO DO SINAL (PADÃO {sinal_ativo['padrao_id']} ➡️SEQUÊNCIA: {sequencia_str})\nPLACAR: {placar['✅']}✅"
+                    mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\nPLACAR: {placar['✅']}✅"
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                     logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                     sinais_ativos.remove(sinal_ativo)
@@ -242,7 +233,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                                     logging.debug(f"Mensagem de gale apagada: ID {sinal_ativo['gale_message_id']}")
                                 except TelegramError as e:
                                     logging.debug(f"Erro ao apagar mensagem de gale: {e}")
-                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\n📊 RESULTADO DO SINAL (PADÃO {sinal_ativo['padrao_id']} ➡️SEQUÊNCIA: {sequencia_str})\nPLACAR: {placar['✅']}✅"
+                            mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n{resultado_texto}\nPLACAR: {placar['✅']}✅"
                             await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                             logging.info(f"Validação enviada (1 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                             sinais_ativos.remove(sinal_ativo)
