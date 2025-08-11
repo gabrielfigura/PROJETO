@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 import logging
 import os
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from collections import Counter
@@ -37,7 +37,7 @@ OUTCOME_MAP = {
 
 # Padrões (mantidos como estão, mas considerar mover para arquivo externo)
 PADROES = [
-     {"id": 10, "sequencia": ["🔵", "🔴"], "sinal": "🔵"},
+    {"id": 10, "sequencia": ["🔵", "🔴"], "sinal": "🔵"},
     {"id": 11, "sequencia": ["🔴", "🔵"], "sinal": "🔴"},
     {"id": 13, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 14, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴"},
@@ -153,7 +153,7 @@ async def limpar_sinais_obsoletos():
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), 
        retry=retry_if_exception_type(TelegramError))
 async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
-    """Envia uma mensagem de sinal ao Telegram com retry."""
+    """Envia uma mensagem de sinal ao Telegram com retry e botão interativo."""
     global ultima_mensagem_monitoramento
     try:
         if any(sinal["padrao_id"] == padrao_id for sinal in sinais_ativos):
@@ -172,10 +172,15 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
         mensagem = f"""💡CLEVER ANALISOU💡
 🧠TENDÊNCIA NO: {sinal}
 🛡️PROTEGE SEMPRE O TIE🟡
-🤑VAI ENTRAR DINHEIRO🤑
-⬇️ENTRA NA NOSSA COMUNIDADE⬇️
-https://chat.whatsapp.com/IPu7Ywx1rWrKi44gCzGc2i?mode=ac_t"""
-        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem)
+🤑VAI ENTRAR DINHEIRO🤑"""
+
+        # Adicionar botão interativo para o link do WhatsApp
+        keyboard = [
+            [InlineKeyboardButton("CLICA PRA ENTRAR NA COMUNIDADE🤌", url="https://chat.whatsapp.com/IPu7Ywx1rWrKi44gCZc2i?mode=ac_t")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem, reply_markup=reply_markup)
         logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}")
         sinais_ativos.append({
             "sinal": sinal,
