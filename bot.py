@@ -178,7 +178,7 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
 
         # Adicionar botão interativo para o link do WhatsApp
         keyboard = [
-            [InlineKeyboardButton("CLICA PRA ENTRAR NA COMUNIDADE🤌", url="https://chat.whatsapp.com/IPu7Ywx1rWrKi44gCZc2i?mode=ac_t")]
+            [InlineKeyboardButton("CLICA PRA ENTRAR NA COMUNIDADE🤌", url="https://chat.whatsapp.com/IPu7Ywx1rWrKi44gCzGc2i?mode=ac_t")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
