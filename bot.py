@@ -44,33 +44,38 @@ OUTCOME_MAP = {
 
 # Padrões
 PADROES = [
-       {"id": 10, "sequencia": ["🔵", "🔴"], "sinal": "🔵"},
+        {"id": 10, "sequencia": ["🔵", "🔴"], "sinal": "🔵"},
     {"id": 11, "sequencia": ["🔴", "🔵"], "sinal": "🔴"},
-    {"id": 13, "sequencia": ["🔵", "🔵", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 14, "sequencia": ["🔴", "🔴", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 15, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔵"},
-    {"id": 16, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔴"},
-    {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-    {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 13, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 14, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 15, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
+    {"id": 16, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
+    {"id": 17, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 18, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 19, "sequencia": ["🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
     {"id": 20, "sequencia": ["🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-    {"id": 21, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔵"},
-    {"id": 22, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "sinal": "🔴"},
-    {"id": 25, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔴"},
-    {"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "sinal": "🔵"},
-    {"id": 35, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔵"], "sinal": "🔴"},
-    {"id": 36, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔴"], "sinal": "🔵"},
-    {"id": 39, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "sinal": "🔴"},
-    {"id": 40, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "sinal": "🔵"},
+    {"id": 21, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 22, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 23, "sequencia": ["🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 24, "sequencia": ["🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 25, "sequencia": ["🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 31, "sequencia": ["🔴", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 34, "sequencia": ["🔵", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 35, "sequencia": ["🔴", "🔴", "🟡"], "sinal": "🔴"},
+    {"id": 36, "sequencia": ["🔵", "🔵", "🟡"], "sinal": "🔵"},
+    {"id": 39, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 40, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "sinal": "🔴"},
     {"id": 41, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "sinal": "🔴"},
     {"id": 42, "sequencia": ["🔵", "🔴", "🟡", "🔵"], "sinal": "🔵"},
-    {"id": 43, "sequencia": ["🔴", "🟡", "🔵"], "sinal": "🔴"},
-    {"id": 44, "sequencia": ["🔵", "🟡", "🔴"], "sinal": "🔵"},
-    {"id": 45, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 46, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 43, "sequencia": ["🔴", "🔴", "🔵", "🟡"], "sinal": "🔴"},
+    {"id": 44, "sequencia": ["🔵", "🔵", "🔴", "🟡"], "sinal": "🔵"},
+    {"id": 45, "sequencia": ["🔵", "🟡", "🟡"], "sinal": "🔵"},
+    {"id": 46, "sequencia": ["🔴", "🟡", "🟡"], "sinal": "🔴"},
     {"id": 1, "sequencia": ["🔵", "🔴", "🔵", "🔴"], "sinal": "🔵"},
     {"id": 2, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
     {"id": 3, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 4, "sequencia": ["🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
     {"id": 5, "sequencia": ["🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
     {"id": 6, "sequencia": ["🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 7, "sequencia": ["🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"},
@@ -78,12 +83,28 @@ PADROES = [
     {"id": 9, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔴"},
     {"id": 249, "sequencia": ["🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
     {"id": 150, "sequencia": ["🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 230, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 260, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 275, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 277, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 408, "sequencia": ["🟡", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 498, "sequencia": ["🟡", "🔵", "🔴"], "sinal": "🔴"}
+    {"id": 420, "sequencia": ["🔴", "🟡", "🔴"], "sinal": "🔴"},
+    {"id": 424, "sequencia": ["🔵", "🟡", "🔵"], "sinal": "🔵"},
+    {"id": 525, "sequencia": ["🔴", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 526, "sequencia": ["🔵", "🔵", "🔵", "🔴"], "sinal": "🔴"}
+    {"id": 01, "sequencia": ["🔴","🔵","🔴","🔵"], "sinal": "🔴"},
+  {"id": 202, "sequencia": ["🔵","🔴","🔵","🔴"], "sinal": "🔵"},
+  {"id": 31, "sequencia": ["🔴","🟡","🔴","🟡"], "sinal": "🔴"},
+  {"id": 40, "sequencia": ["🟡","🔴","🟡","🔴"], "sinal": "🔵"},
+  {"id": 51, "sequencia": ["🔵","🟡","🔵","🟡"], "sinal": "🔵"},
+  {"id": 63, "sequencia": ["🟡","🔵","🟡","🔵"], "sinal": "🔵"},
+  {"id": 72, "sequencia": ["🔴","🔴","🔴","🔴","🔴","🔴"], "sinal": "🔴"},
+  {"id": 87, "sequencia": ["🔵","🔵","🔵","🔵","🔵","🔵"], "sinal": "🔵"},
+  {"id": 95, "sequencia": ["🟡","🟡","🟡","🟡"], "sinal": "🟡"},
+  {"id": 120, "sequencia": ["🔴","🔴","🔴","🔵"], "sinal": "🔵"},
+  {"id": 110, "sequencia": ["🔵","🔵","🔵","🔴"], "sinal": "🔴"},
+  {"id": 124, "sequencia": ["🔴","🔴","🔵"], "sinal": "🔵"},
+  {"id": 131, "sequencia": ["🔵","🔵","🔴"], "sinal": "🔴"},
+  {"id": 142, "sequencia": ["🔵","🔴","🔵"], "sinal": "🔵"},
+  {"id": 157, "sequencia": ["🔴","🔵","🔴"], "sinal": "🔴"},
+  {"id": 160, "sequencia": ["🔵","🔴","🔵","🔴","🔴"], "sinal": "🔴"},
+  {"id": 144, "sequencia": ["🔵","🔴","🔵","🔴","🔴"], "sinal": "🔴"},
+  {"id": 244, "sequencia": ["🔴","🔵","🔴","🔵","🔵"], "sinal": "🔵"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
@@ -188,7 +209,7 @@ async def enviar_placar():
     try:
         total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2']
         erro_mensagem = "AINDA NÃO ERRAMOS😌" if placar['losses'] == 0 else f"ERRAMOS APENAS {placar['losses']} SINAL❌"
-        mensagem_placar = f"🎯RESULTADOS DO CLEVER🎯\nGANHOS SEGUIDOS: {placar['ganhos_seguidos']}🤑\nGANHOS NO 1•GALE: {placar['ganhos_gale1']}🤌\nGANHOS NO 2•GALE: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
+        mensagem_placar = f"🎯RESULTADOS DO CLEVER🎯\nSG: {placar['ganhos_seguidos']}🤑\n1G: {placar['ganhos_gale1']}🤌\n2G: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
         await bot.send_message(chat_id=CHAT_ID, text=mensagem_placar)
         logging.info(f"Placar enviado: {mensagem_placar}")
     except TelegramError as e:
