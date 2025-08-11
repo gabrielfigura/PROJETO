@@ -53,8 +53,8 @@ PADROES = [
     {"id": 26, "sequencia": ["🔴", "🔴", "🔴", "🔴"], "sinal": "🔵"},
     {"id": 35, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔵"], "sinal": "🔴"},
     {"id": 36, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔴"], "sinal": "🔵"},
-    {"id": 39, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 40, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 39, "sequencia": ["🔴", "🟡", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 40, "sequencia": ["🔵", "🟡", "🔵", "🔴"], "sinal": "🔵"},
     {"id": 41, "sequencia": ["🔴", "🔵", "🟡", "🔴"], "sinal": "🔴"},
     {"id": 42, "sequencia": ["🔵", "🔴", "🟡", "🔵"], "sinal": "🔵"},
     {"id": 43, "sequencia": ["🔴", "🟡", "🔵"], "sinal": "🔵"},
@@ -168,7 +168,9 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
         mensagem = f"""💡CLEVER ANALISOU💡
 🧠TENDÊNCIA NO: {sinal}
 🛡️PROTEGE SEMPRE O TIE🟡
-🤑VAI ENTRAR DINHEIRO🤑"""
+🤑VAI ENTRAR DINHEIRO🤑
+⬇️ENTRA NA NOSSA COMUNIDADE⬇️
+https://chat.whatsapp.com/IPu7Ywx1rWrKi44gCzGc2i?mode=ac_t"""
         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem)
         logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}")
         sinais_ativos.append({
