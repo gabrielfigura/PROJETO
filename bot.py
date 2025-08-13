@@ -175,7 +175,7 @@ async def enviar_placar():
     try:
         total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2']
         erro_mensagem = "AINDA NÃO ERRAMOS😌" if placar['losses'] == 0 else f"ERRAMOS APENAS {placar['losses']} SINAL❌"
-        mensagem_placar = f"🎯RESULTADOS DO CLEVER🎯\nSG: {placar['ganhos_seguidos']}🤑\n1G: {placar['ganhos_gale1']}🤌\n2G: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
+        mensagem_placar = f"🎯PLACAR🎯SG: {placar['ganhos_seguidos']}🤑1G: {placar['ganhos_gale1']}🤌2G: {placar['ganhos_gale2']}🤌L:{placar['losses']}❌\nACERTAMOS: {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
         await bot.send_message(chat_id=CHAT_ID, text=mensagem_placar)
         logging.info(f"Placar enviado: {mensagem_placar}")
     except TelegramError as e:
