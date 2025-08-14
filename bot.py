@@ -9,8 +9,8 @@ from collections import Counter
 import uuid
 
 # Configurações do Bot
-BOT_TOKEN = os.getenv("BOT_TOKEN", "7758723414:AAF-Zq1QPoGy2IS-iK2Wh28PfexP0_mmHHc")
-CHAT_ID = os.getenv("CHAT_ID", "-1002506692600")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8344261996:AAEgDWaIb7hzknPpTQMdiYKSE3hjzP0mqFc")
+CHAT_ID = os.getenv("CHAT_ID", "-1002783091818")
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
 
 # Inicializar o bot
@@ -42,33 +42,33 @@ OUTCOME_MAP = {
     "Tie": "🟡"
 }
 
-# Padrões
+# Padrões fortes atualizados (sinal baseado na cor mais frequente ou última em caso de empate)
 PADROES = [
-        {"id": 26, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴"},
-  {"id": 209, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔵"},
-  {"id": 308, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔵"},
-  {"id": 103, "sequencia": ["🔴", "🔵", "🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔴"},
-  {"id": 107, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔵"},
-  {"id": 506, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
-{"id": 54, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-{"id": 780, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔴"], "sinal": "🔵"},
-{"id": 378, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔵"], "sinal": "🔴"},
-{"id": 270, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔵"},
-{"id": 341, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔴"},
-{"id": 708, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
-{"id": 43, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
-{"id": 444, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-{"id": 123, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
-{"id": 237, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔴"},
-{"id": 870, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔵"},
-{"id": 654, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔵"},
-{"id": 555, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔴"},
-{"id": 64, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
-{"id": 56, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
-{"id": 77, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔴"},
-{"id": 88, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔵"},
-{"id": 763, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
-{"id": 390, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"}
+    {"id": 26, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 209, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 308, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 103, "sequencia": ["🔴", "🔵", "🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 107, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 506, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 54, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 780, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 378, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 270, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 341, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 708, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
+    {"id": 43, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
+    {"id": 444, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 123, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 237, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 870, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔵"},
+    {"id": 654, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 555, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 64, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 56, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 77, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 88, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔵"},
+    {"id": 763, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 390, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
@@ -173,7 +173,7 @@ async def enviar_placar():
     try:
         total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2']
         erro_mensagem = "AINDA NÃO ERRAMOS😌" if placar['losses'] == 0 else f"ERRAMOS APENAS {placar['losses']} SINAL❌"
-        mensagem_placar = f"🎯PLACAR🎯SG: {placar['ganhos_seguidos']}🤑1G: {placar['ganhos_gale1']}🤌2G: {placar['ganhos_gale2']}🤌L:{placar['losses']}❌\nACERTAMOS: {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
+        mensagem_placar = f"🎯RESULTADOS DO CLEVER🎯\nSG: {placar['ganhos_seguidos']}🤑\n1G: {placar['ganhos_gale1']}🤌\n2G: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
         await bot.send_message(chat_id=CHAT_ID, text=mensagem_placar)
         logging.info(f"Placar enviado: {mensagem_placar}")
     except TelegramError as e:
@@ -302,7 +302,7 @@ async def enviar_relatorio():
         try:
             total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2']
             erro_mensagem = "AINDA NÃO ERRAMOS😌" if placar['losses'] == 0 else f"ERRAMOS APENAS {placar['losses']} SINAL❌"
-            msg = f"📈 Relatório: Bot em operação\n🎯RESULTADOS DO CLEVER🎯\nSG: {placar['ganhos_seguidos']}🤑1G: {placar['ganhos_gale1']}🤌2G: {placar['ganhos_gale2']}🤌L:{placar['losses']}❌\nACERTAMOS {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
+            msg = f"📈 Relatório: Bot em operação\n🎯RESULTADOS DO CLEVER🎯\nGANHOS SEGUIDOS: {placar['ganhos_seguidos']}🤑\nGANHOS NO 1•GALE: {placar['ganhos_gale1']}🤌\nGANHOS NO 2•GALE: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
             await bot.send_message(chat_id=CHAT_ID, text=msg)
             logging.info(f"Relatório enviado: {msg}")
         except TelegramError as e:
