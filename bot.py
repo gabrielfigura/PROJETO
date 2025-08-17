@@ -10,7 +10,7 @@ import uuid
 
 # Configurações do Bot
 BOT_TOKEN = os.getenv("BOT_TOKEN", "7758723414:AAF-Zq1QPoGy2IS-iK2Wh28PfexP0_mmHHc")
-CHAT_ID = os.getenv("CHAT_ID", "--1002506692600")
+CHAT_ID = os.getenv("CHAT_ID", "-1002506692600")
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
 
 # Inicializar o bot
