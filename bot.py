@@ -9,8 +9,8 @@ from collections import Counter
 import uuid
 
 # Configurações do Bot
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8344261996:AAEgDWaIb7hzknPpTQMdiYKSE3hjzP0mqFc")
-CHAT_ID = os.getenv("CHAT_ID", "-1002783091818")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7758723414:AAF-Zq1QPoGy2IS-iK2Wh28PfexP0_mmHHc")
+CHAT_ID = os.getenv("CHAT_ID", "--1002506692600")
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
 
 # Inicializar o bot
@@ -28,8 +28,7 @@ placar = {
     "ganhos_seguidos": 0,
     "ganhos_gale1": 0,
     "ganhos_gale2": 0,
-    "losses": 0,
-    "precisao": 92.0
+    "losses": 0
 }
 rodadas_desde_erro = 0  # Contador para cooldown após erro
 ultima_mensagem_monitoramento = None  # Rastrear ID da mensagem de monitoramento
@@ -42,33 +41,33 @@ OUTCOME_MAP = {
     "Tie": "🟡"
 }
 
-# Padrões fortes atualizados (sinal baseado na cor mais frequente ou última em caso de empate)
+# Padrões
 PADROES = [
     {"id": 26, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔴"},
     {"id": 209, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 308, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 103, "sequencia": ["🔴", "🔵", "🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
-    {"id": 107, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 506, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 54, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 780, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 378, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 270, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 341, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
+    {"id": 308, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔵"},
+    {"id": 103, "sequencia": ["🔴", "🔵", "🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔴"},
+    {"id": 107, "sequencia": ["🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔵"},
+    {"id": 506, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 54, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 780, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 378, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 270, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 341, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔴"},
     {"id": 708, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔵"},
     {"id": 43, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔴"},
-    {"id": 444, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 123, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 444, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 123, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
     {"id": 237, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔴", "🔵", "🔴", "🔴", "🔵"], "sinal": "🔴"},
     {"id": 870, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔵", "🔴", "🔵", "🔵", "🔴"], "sinal": "🔵"},
-    {"id": 654, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 555, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 64, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"},
-    {"id": 56, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
+    {"id": 654, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 555, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 64, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"},
+    {"id": 56, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
     {"id": 77, "sequencia": ["🔴", "🔵", "🔴", "🔴", "🔴", "🔴", "🔴", "🔵"], "sinal": "🔴"},
     {"id": 88, "sequencia": ["🔵", "🔴", "🔵", "🔵", "🔵", "🔵", "🔵", "🔴"], "sinal": "🔵"},
-    {"id": 763, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔴"},
-    {"id": 390, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔵"}
+    {"id": 763, "sequencia": ["🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴"], "sinal": "🔵"},
+    {"id": 390, "sequencia": ["🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵"], "sinal": "🔴"}
 ]
 
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=30), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
@@ -148,10 +147,10 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
             return
 
         sequencia_str = " ".join(sequencia)
-        mensagem = f"""💡CLEVER ANALISOU💡
-🧠TENDÊNCIA NO: {sinal}
-🛡️PROTEGE SEMPRE O TIE🟡
-🤑VAI ENTRAR DINHEIRO🤑"""
+        mensagem = f"""💡 CLEVER ANALISOU 💡
+🧠 Tendência: {sinal}
+🛡️ Proteja o TIE 🟡
+🤑 VAI ENTRAR DINHEIRO🤑"""
         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem)
         logging.info(f"Sinal enviado: Padrão {padrao_id}, Sequência: {sequencia_str}, Sinal: {sinal}, Resultado ID: {resultado_id}")
         sinais_ativos.append({
@@ -169,11 +168,20 @@ async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
         raise
 
 async def enviar_placar():
-    """Envia o placar atualizado."""
+    """Envia o placar atualizado de forma concisa e profissional."""
     try:
         total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2']
-        erro_mensagem = "AINDA NÃO ERRAMOS😌" if placar['losses'] == 0 else f"ERRAMOS APENAS {placar['losses']} SINAL❌"
-        mensagem_placar = f"🎯RESULTADOS DO CLEVER🎯\nSG: {placar['ganhos_seguidos']}🤑\n1G: {placar['ganhos_gale1']}🤌\n2G: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
+        total_sinais = total_acertos + placar['losses']
+        precisao = (total_acertos / total_sinais * 100) if total_sinais > 0 else 0.0
+        precisao = min(precisao, 100.0)  # Limitar a 100%
+        mensagem_placar = f"""📊 Placar CLEVER
+SG: {placar['ganhos_seguidos']}
+1G: {placar['ganhos_gale1']}
+2G: {placar['ganhos_gale2']}
+L: {placar['losses']}
+Acertos: {total_acertos}
+Erros: {placar['losses']}
+Precisão: {precisao:.2f}%"""
         await bot.send_message(chat_id=CHAT_ID, text=mensagem_placar)
         logging.info(f"Placar enviado: {mensagem_placar}")
     except TelegramError as e:
@@ -196,7 +204,6 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                         placar["ganhos_gale1"] += 1
                     else:
                         placar["ganhos_gale2"] += 1
-                    placar["precisao"] = min(placar["precisao"] + 0.35, 100.0)  # Limite de 100%
                     # Apagar mensagem de gale, se existir
                     if sinal_ativo["gale_message_id"]:
                         try:
@@ -205,7 +212,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                         except TelegramError as e:
                             logging.debug(f"Erro ao apagar mensagem de gale: {e}")
                     # Enviar validação com resultados da rodada atual
-                    mensagem_validacao = f"🤑ENTROU DINHEIRO🤑\n🎲 RESULTADOS: 🔵: {player_score}  🔴: {banker_score}"
+                    mensagem_validacao = f"✅ ENTROU DINHEIRO\n🎲 Resultado: 🔵 {player_score} x 🔴 {banker_score}"
                     await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
                     logging.info(f"Validação enviada: Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}, Validação: {mensagem_validacao}")
                     # Enviar placar após validação
@@ -216,7 +223,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     if sinal_ativo["gale_nivel"] == 0:
                         # Primeira perda: pausar detecção e enviar mensagem de 1 gale
                         detecao_pausada = True
-                        mensagem_gale = "BORA GANHAR NO 1 GALE🎯"
+                        mensagem_gale = "🔄 Tentar 1º Gale"
                         message = await bot.send_message(chat_id=CHAT_ID, text=mensagem_gale)
                         sinal_ativo["gale_nivel"] = 1
                         sinal_ativo["gale_message_id"] = message.message_id
@@ -225,7 +232,7 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     elif sinal_ativo["gale_nivel"] == 1:
                         # Perda no 1 gale: pausar detecção e enviar mensagem de 2 gale
                         detecao_pausada = True
-                        mensagem_gale = "BORA GANHAR NO 2 GALE🤌🔥"
+                        mensagem_gale = "🔄 Tentar 2º Gale"
                         try:
                             await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                             logging.debug(f"Mensagem de 1 gale apagada: ID {sinal_ativo['gale_message_id']}")
@@ -239,14 +246,13 @@ async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
                     else:
                         # Erro no 2 gale
                         placar["losses"] += 1
-                        placar["precisao"] = max(placar["precisao"] - 0.85, 0.0)  # Evitar precisão negativa
                         if sinal_ativo["gale_message_id"]:
                             try:
                                 await bot.delete_message(chat_id=CHAT_ID, message_id=sinal_ativo["gale_message_id"])
                                 logging.debug(f"Mensagem de 2 gale apagada: ID {sinal_ativo['gale_message_id']}")
                             except TelegramError as e:
                                 logging.debug(f"Erro ao apagar mensagem de 2 gale: {e}")
-                        await bot.send_message(chat_id=CHAT_ID, text="NÃO FOI DESSA🤧")
+                        await bot.send_message(chat_id=CHAT_ID, text="❌ NÃO FOI DESSA❌")
                         logging.info(f"Validação enviada (Erro 2 Gale): Sinal {sinal_ativo['sinal']}, Resultado {resultado}, Resultado ID: {resultado_id}")
                         # Enviar placar após loss
                         await enviar_placar()
@@ -286,7 +292,7 @@ async def enviar_monitoramento():
                         logging.debug(f"Erro ao apagar mensagem de monitoramento: {e}")
                 
                 # Enviar nova mensagem
-                message = await bot.send_message(chat_id=CHAT_ID, text="MONITORANDO A MESA…🤌")
+                message = await bot.send_message(chat_id=CHAT_ID, text="🔎 Monitorando a mesa...")
                 ultima_mensagem_monitoramento = message.message_id
                 logging.debug(f"Mensagem de monitoramento enviada: ID {ultima_mensagem_monitoramento}")
             else:
@@ -301,8 +307,17 @@ async def enviar_relatorio():
     while True:
         try:
             total_acertos = placar['ganhos_seguidos'] + placar['ganhos_gale1'] + placar['ganhos_gale2']
-            erro_mensagem = "AINDA NÃO ERRAMOS😌" if placar['losses'] == 0 else f"ERRAMOS APENAS {placar['losses']} SINAL❌"
-            msg = f"📈 Relatório: Bot em operação\n🎯RESULTADOS DO CLEVER🎯\nGANHOS SEGUIDOS: {placar['ganhos_seguidos']}🤑\nGANHOS NO 1•GALE: {placar['ganhos_gale1']}🤌\nGANHOS NO 2•GALE: {placar['ganhos_gale2']}🤌\nLOSS:{placar['losses']}😔❌\nACERTAMOS {total_acertos} SINAIS🤑\n{erro_mensagem}\nPRECISÃO:{placar['precisao']:.2f}%"
+            total_sinais = total_acertos + placar['losses']
+            precisao = (total_acertos / total_sinais * 100) if total_sinais > 0 else 0.0
+            precisao = min(precisao, 100.0)  # Limitar a 100%
+            msg = f"""📈 Relatório CLEVER
+SG: {placar['ganhos_seguidos']}
+1G: {placar['ganhos_gale1']}
+2G: {placar['ganhos_gale2']}
+L: {placar['losses']}
+Acertos: {total_acertos}
+Erros: {placar['losses']}
+Precisão: {precisao:.2f}%"""
             await bot.send_message(chat_id=CHAT_ID, text=msg)
             logging.info(f"Relatório enviado: {msg}")
         except TelegramError as e:
