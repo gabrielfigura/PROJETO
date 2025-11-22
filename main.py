@@ -1,398 +1,171 @@
-import os
-import time
+from flask import Flask, request, abort
+import requests
 import json
-import csv
+import time
 import threading
-import traceback
 from collections import deque, Counter
 from datetime import datetime, timedelta, timezone
-import requests
+import os
 
-# ---------------- CONFIG ----------------
-TELEGRAM_TOKEN = "8163319902:AAHE9LZ984JCIc-Lezl4WXR2FsGHPEFTxRQ"  # seu token aqui
-CHAT_ID = "-1002597090660"         # seu chat_id aqui
+app = Flask(__name__)
+
+# ============= CONFIG =============
+TELEGRAM_TOKEN = "8163319902:AAHE9LZ984JCIc-Lezl4WXR2FsGHPEFTxRQ"
+CHAT_ID = "-1002597090660"
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
-POLL_INTERVAL = 1.5
-DELETE_ANALYSIS_AFTER = 60
-HISTORY_MAX = 800
-EVENTS_FILE = "events_24h.json"
-CSV_LOG = "history_log.csv"
-USER_AGENT = "Mozilla/5.0 (compatible; CleverBot/1.0)"
-MAX_LOSSES = 10  # Zerar placar após 10 losses consecutivos
+POLL_INTERVAL = 1.8
+DELETE_AFTER = 65
+MAX_HISTORY = 800
+MAX_LOSS_STREAK = 10
 
-# ---------------- STATE ----------------
-HISTORY = deque(maxlen=HISTORY_MAX)
+# ============= STATE =============
+HISTORY = deque(maxlen=MAX_HISTORY)
 ACTIVE_PLAN = None
 LAST_GAME_ID = None
 GALE_MSG_IDS = []
 CONSECUTIVE_LOSSES = 0
+events_24h = []
 
-# ---------------- UTIL ----------------
-def now_iso():
-    return datetime.now(timezone.utc).isoformat()
-
-def log(msg):
-    print(f"[{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
-
-# ---------------- PERSISTÊNCIA ----------------
-events = []
-
-def load_events():
-    global events
-    try:
-        with open(EVENTS_FILE, "r", encoding="utf-8") as f:
-            events = json.load(f)
-    except Exception:
-        events = []
-    prune_events()
-
-def save_events():
-    try:
-        with open(EVENTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(events, f)
-    except Exception as e:
-        log(f"Erro ao salvar events: {e}")
-
-def prune_events():
-    global events
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-    events = [e for e in events if datetime.fromisoformat(e["ts"]) >= cutoff]
-    save_events()
-
-def append_event(outcome, padrao, sugestao, gale, game_id=None, details=None):
-    global events, CONSECUTIVE_LOSSES
-    events.append({
-        "ts": now_iso(),
-        "outcome": outcome,
-        "padrao": padrao,
-        "sugestao": sugestao,
-        "gale": gale,
-        "game_id": game_id,
-        "details": details or {}
-    })
-    prune_events()
-    try:
-        header = not os.path.exists(CSV_LOG)
-        with open(CSV_LOG, "a", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            if header:
-                w.writerow(["ts", "outcome", "padrao", "sugestao", "gale", "game_id", "details"])
-            w.writerow([now_iso(), outcome, padrao, sugestao, gale, game_id or "", json.dumps(details or {})])
-    except Exception as e:
-        log(f"Erro append_event CSV: {e}")
-    
-    # Atualiza losses consecutivos
-    if outcome == "loss":
-        CONSECUTIVE_LOSSES += 1
-    else:
-        CONSECUTIVE_LOSSES = 0
-
-# ---------------- TELEGRAM ----------------
+# ============= UTIL =============
+def now(): return datetime.now(timezone.utc)
 def tg_send(text):
-    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN.strip() == "":
-        log("Telegram token vazio. Mensagem não enviada.")
-        return None
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, data={"chat_id": CHAT_ID, "text": text}, timeout=12)
+        r = requests.post(url, json={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=10)
         if r.status_code == 200:
-            return r.json().get("result", {}).get("message_id")
-        else:
-            log(f"Telegram send error {r.status_code}: {r.text}")
-    except Exception as e:
-        log(f"Telegram send exception: {e}")
+            return r.json()["result"]["message_id"]
+    except: pass
     return None
 
-def tg_delete(message_id):
-    if not message_id:
-        return False
+def tg_delete(msg_id):
+    if not msg_id: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
-    try:
-        r = requests.post(url, data={"chat_id": CHAT_ID, "message_id": message_id}, timeout=8)
-        return r.status_code == 200
-    except Exception as e:
-        log(f"tg_delete exception: {e}")
-        return False
+    try: requests.post(url, json={"chat_id": CHAT_ID, "message_id": msg_id}, timeout=5)
+    except: pass
 
-def schedule_delete(msg_id, delay=60):
-    if not msg_id:
-        return
-    def job(mid, d):
-        time.sleep(d)
-        try:
-            tg_delete(mid)
-        except Exception:
-            pass
-    threading.Thread(target=job, args=(msg_id, delay), daemon=True).start()
+def schedule_delete(msg_id, delay=DELETE_AFTER):
+    def job(): 
+        time.sleep(delay)
+        tg_delete(msg_id)
+    threading.Thread(target=job, daemon=True).start()
 
-# ---------------- API ----------------
-def fetch_api():
-    headers = {"User-Agent": USER_AGENT}
-    try:
-r = requests.get(API_URL, headers=headers, timeout=12)
-        if r.status_code == 200:
-            return r.json()
-        else:
-            log(f"API HTTP {r.status_code}: {r.text if hasattr(r, 'text') else ''}")
-    except Exception as e:
-        log(f"API fetch exception: {e}")
+# ============= ESTRATÉGIAS =============
+def get_label(res): 
+    r = str(res).lower()
+    if "player" in r: return "P"
+    if "banker" in r: return "B"
+    if any(x in r for x in ["tie","draw","empate"]): return "T"
     return None
 
-def outcome_to_label(outcome_str):
-    if not outcome_str: return None
-    s = str(outcome_str).lower()
-    if "player" in s: return "P"
-    if "banker" in s: return "B"
-    if "tie" in s or "draw" in s or "empate" in s: return "T"
-    if s=="p": return "P"
-    if s=="b": return "B"
-    if s=="t": return "T"
-    return None
-
-def parse_latest_from_api(data):
+def parse_result(data):
     try:
-        payload = data.get("data") or data
-        game_id = None
-        label = None
-        extra = {}
-        if isinstance(payload, dict):
-            game_id = payload.get("id") or payload.get("gameId") or payload.get("roundId")
-            result = payload.get("result") or (payload.get("game") or {}).get("result") or payload.get("outcome") or payload.get("winner")
-            if isinstance(result, dict):
-                outcome = result.get("outcome") or result.get("winner") or result.get("result")
-                label = outcome_to_label(outcome)
-                pl = result.get("playerDice") or result.get("player") or {}
-                bk = result.get("bankerDice") or result.get("banker") or {}
-                def get_score(obj):
-                    if not isinstance(obj, dict):
-                        return None
-                    for k in ("score","sum","total","points"):
-                        v = obj.get(k)
-                        if v is None: continue
-                        try: return int(v)
-                        except Exception:
-                            try: return int(str(v))
-                            except Exception: return None
-                    return None
-                extra["player_score"] = get_score(pl)
-                extra["banker_score"] = get_score(bk)
-                return game_id,label,True,extra
-        return game_id,label,False,{}
-    except Exception:
-        return None,None,False,{}
+        d = data.get("data") or data
+        gid = d.get("id") or d.get("gameId") or d.get("roundId")
+        res = d.get("result") or d.get("outcome") or {}
+        winner = res.get("outcome") or res.get("winner")
+        label = get_label(winner)
+        p_score = res.get("playerDice", {}).get("sum") or "?"
+        b_score = res.get("bankerDice", {}).get("sum") or "?"
+        return gid, label, {"p": p_score, "b": b_score}
+    except: return None, None, {}
 
-# ---------------- ESTRATÉGIAS ----------------
-def oposto(c): return 'P' if c=='B' else 'B'
-
-def estrategia_repeticao(hist):
-    if len(hist)>=3 and hist[-1]==hist[-2]==hist[-3] and hist[-1] in ("P","B"): return ("𝘙𝘦𝘱𝘦𝘵𝘪𝘤𝘢𝘰 3x", hist[-1])
-    if len(hist)>=2 and hist[-1]==hist[-2] and hist[-1] in ("P","B"): return ("𝘙𝘦𝘱𝘦𝘵𝘪𝘤𝘢𝘰 2x", hist[-1])
-    return None
-
-def estrategia_alternancia_new(hist):
+def estrategias(hist, extra):
+    sinais = []
+    # Repetição
+    if len(hist)>=3 and hist[-1]==hist[-2]==hist[-3] and hist[-1] in "PB":
+        sinais.append(("Repetição 3x", hist[-1]))
+    # Alternância ABAB
     if len(hist)>=4:
-        last4 = hist[-4:]
-        if all(x in ("P","B") for x in last4) and last4[0]==last4[2] and last4[1]==last4[3] and last4[0]!=last4[1]:
-            return ("𝘈𝘭𝘵𝘦𝘳𝘯𝘢𝘯𝘤𝘪𝘢 𝘈𝘉𝘈𝘉", oposto(last4[-1]))
-    return None
+        l4 = hist[-4:]
+        if l4[0]==l4[2] and l4[1]==l4[3] and l4[0]!=l4[1] and l4[0] in "PB":
+            sinais.append(("Alternância ABAB", "P" if l4[-1]=="B" else "B"))
+    # Após empate
+    if len(hist)>=2 and hist[-2]=="T" and hist[-1] in "PB":
+        sinais.append(("Sequência de Tie", hist[-1]))
+    # Última vencedora
+    if hist and hist[-1] in "PB":
+        sinais.append(("Última Vencedora", hist[-1]))
+    # Maioria 5
+    last5 = [x for x in list(hist)[-5:] if x in "PB"]
+    if len(last5)>=3:
+        sinais.append(("Maioria 5", Counter(last5).most_common(1)[0][0]))
+    return sinais[:1]  # só o mais forte
 
-def estrategia_seq_empate(hist):
-    if len(hist)>=2 and hist[-2]=='T' and hist[-1] in ('P','B'): return ("𝘴𝘦𝘲𝘶𝘦𝘯𝘤𝘪𝘢 𝘥𝘦 𝘵𝘪𝘦", hist[-1])
-    return None
+def signal_text(s): 
+    return "JOGAR NO PLAYER\nPROTEÇÃO EMPATE" if s=="P" else "JOGAR NO BANKER\nPROTEÇÃO EMPATE"
 
-def estrategia_ultima(hist):
-    if len(hist)>=1 and hist[-1] in ('P','B'): return ("𝘜𝘭𝘵𝘪𝘮𝘢 𝘷𝘦𝘯𝘤𝘦𝘥𝘰𝘳𝘢", hist[-1])
-    return None
+# ============= PLACAR =============
+def placar():
+    total = len(events_24h)
+    wins = sum(1 for e in events_24h if e["res"] in ["win","tie"])
+    acc = (wins/total*100) if total else 0
+    return f"""CLEVER – PLACAR ATUAL
 
-def estrategia_maj5(hist):
-    window = [x for x in list(hist)[-5:] if x in ('P','B')]
-    if len(window)>=3:
-        cnt = Counter(window)
-        most,_ = cnt.most_common(1)[0]
-        return ("𝘔𝘢𝘪𝘰𝘳𝘪𝘢5", most)
-    return None
+G0+G1+G2: {wins}  
+EMPATES: {sum(1 for e in events_24h if e["res"]=="tie")}
+LOSS: {total-wins}
 
-def estrategia_paridade(extra):
-    try:
-        ps = extra.get("player_score")
-        bs = extra.get("banker_score")
-        if ps is None or bs is None: return None
-        if ps%2==1 and bs%2==0: return ("𝘗𝘢𝘳𝘪𝘋𝘦𝘋𝘢𝘥𝘰𝘴","P")
-        if bs%2==1 and ps%2==0: return ("𝘗𝘢𝘳𝘪𝘋𝘦𝘋𝘢𝘥𝘰𝘴","B")
-    except Exception: pass
-    return None
+ACERTIVIDADE: {acc:.1f}%
+TOTAL: {total}"""
 
-def gerar_todas_estrategias(hist, extra=None):
-    sinais=[]
-    funcs=[estrategia_repeticao,estrategia_alternancia_new,estrategia_seq_empate,estrategia_ultima,estrategia_maj5]
-    seen=set()
-    uniq=[]
-    for f in funcs:
-        try:
-            res=f(hist)
-            if res and res[1] not in seen:
-                uniq.append(res)
-                seen.add(res[1])
-                except Exception: pass
-    res=estrategia_paridade(extra or {})
-    if res and res[1] not in seen: uniq.append(res)
-    return uniq
-
-# ---------------- MENSAGENS ----------------
-ANALYSE_TEXT="⬇️ 𝘚𝘐𝘕𝘈𝘓 𝘈𝘕𝘈𝘓𝘐𝘚𝘈𝘋𝘖 ⬇️"
-def signal_text(sug):
-    if sug=='P': return "🔵 JOGAR NO PLAYER\n🛡️ PROTEÇÃO EMPATE: 🟠"
-    if sug=='B': return "🔴 JOGAR NO BANKER\n🛡️ PROTEÇÃO EMPATE: 🟠"
-    if sug=='T': return "🚀 POSSÍVEL EMPATE 🟠"
-    return "💡JOGADA DETECTADA💡"
-
-def gale_text(n,s):
-    em="🔵" if s=='P' else ("🔴" if s=='B' else "🟡")
-    return f" 🔄 GALÉ {n}  {em}"
-
-# ---------------- PLACAR ----------------
-def compute_scoreboard():
-    global CONSECUTIVE_LOSSES
-    prune_events()
-    total = len(events)
-    wins_g0 = sum(1 for e in events if e['outcome'] == 'win' and e['gale'] == 0)
-    wins_g1 = sum(1 for e in events if e['outcome'] == 'win' and e['gale'] == 1)
-    wins_g2 = sum(1 for e in events if e['outcome'] == 'win' and e['gale'] == 2)
-    ties = sum(1 for e in events if e['outcome'] == 'tie')
-    losses = sum(1 for e in events if e['outcome'] == 'loss')
-    accuracy = ((wins_g0 + wins_g1 + wins_g2 + ties) / total * 100) if total else 0.0
-    max_streak = 0
-    cur = 0
-    for e in events:
-        if e['outcome'] in ('win', 'tie'):
-            cur += 1
-            max_streak = max(max_streak, cur)
-        else:
-            cur = 0
-    cur_streak = 0
-    for e in reversed(events):
-        if e['outcome'] in ('win', 'tie'):
-            cur_streak += 1
-        else:
-            break
-    # Zerar se 10 losses consecutivos
-    if CONSECUTIVE_LOSSES >= MAX_LOSSES:
-        CONSECUTIVE_LOSSES = 0
-        events.clear()
-        save_events()
-        total = wins_g0 = wins_g1 = wins_g2 = ties = losses = cur_streak = accuracy = 0
-    return {
-        "total": total,
-        "wins_g0": wins_g0,
-        "wins_g1": wins_g1,
-        "wins_g2": wins_g2,
-        "ties": ties,
-        "losses": losses,
-        "accuracy": accuracy,
-        "cur_streak": cur_streak
-    }
-
-def montar_painel_text():
-    s = compute_scoreboard()
-    return (
-        f"📊 CLEVER – PLACAR ATUAL\n\n"
-        f"🏅 G0: {s['wins_g0']}   |   G1: {s['wins_g1']}   |   G2: {s['wins_g2']}\n"
-        f"🛡️ EMPATES: {s['ties']}\n"
-        f"❌ LOSS: {s['losses']}\n\n"
-        f"🎯 ACERTIVIDADE: {s['accuracy']:.2f}%\n"
-        f"🔥 WINS SEGUIDOS: {s['cur_streak']}\n"
-        f"📉 TOTAL JOGADAS: {s['total']}\n"
-    )
-
-# ---------------- PLAN ----------------
-class Plan:
-    def __init__(self,padrao,sugestao):
-        self.padrao=padrao
-        self.sugestao=sugestao
-        self.gale=0
-        self.completed=False
-
-def announce_plan(padrao,sugestao):
-    return tg_send(f"{ANALYSE_TEXT}\n🎯 ESTRETEGIA: {padrao}\n👉 ENTRADA: {signal_text(sugestao)}")
-
-def post_result_and_stats(game_id,plan,extra,outcome):
-    gale = plan.gale
-    sug = plan.sugestao
-    padrao = plan.padrao
-    ps = extra.get("player_score", "?")
-    bs = extra.get("banker_score", "?")
-    if outcome=="win" or outcome=="tie":
-        texto = f"🤑 WIN DO CLEVER BOT\nResultado: 🔵 {ps} | 🔴 {bs}\nGale usado: {gale}"
-        if outcome=="tie":
-            texto = f"🟠 WIN NO EMPATE\nResultado: 🔵 {ps} | 🔴 {bs}\nGale usado: {gale}"
-    else:
-        texto = f"❌ LOSS\nResultado: 🔵 {ps} | 🔴 {bs}\nGale usado: {gale}"
-    tg_send(texto)
-    append_event(outcome,padrao,sug,gale,game_id,extra)
-    msg_placar = tg_send(montar_painel_text())
-    schedule_delete(msg_placar, delay=DELETE_ANALYSIS_AFTER)
-
-def settle_plan(plan,hist,extra):
-    global GALE_MSG_IDS
-    if not plan or plan.completed: return
-    last = hist[-1] if hist else None
-    sug = plan.sugestao
-    if last==sug or last=="T":
-        post_result_and_stats(None,plan,extra,"win" if last==sug else "tie")
-        for mid in GALE_MSG_IDS: tg_delete(mid)
-        GALE_MSG_IDS=[]
-        plan.completed=True
-    else:
-        if plan.gale==0:
-            plan.gale=1
-            mid = tg_send(gale_text(plan.gale, sug))
-            GALE_MSG_IDS.append(mid)
-        elif plan.gale==1:
-            plan.gale=2
-
-mid = tg_send(gale_text(plan.gale, sug))
-            GALE_MSG_IDS.append(mid)
-        else:
-            post_result_and_stats(None,plan,extra,"loss")
-            for mid in GALE_MSG_IDS: tg_delete(mid)
-            GALE_MSG_IDS=[]
-            plan.completed=True
-
-# ---------------- MAIN LOOP ----------------
-def main_loop():
-    global HISTORY, ACTIVE_PLAN, LAST_GAME_ID
-    load_events()
-    log("Iniciando CLEVER BOT...")
+# ============= LOOP PRINCIPAL =============
+def background_loop():
+    global ACTIVE_PLAN, LAST_GAME_ID, CONSECUTIVE_LOSSES
     while True:
         try:
-            data=fetch_api()
-            if not data:
-                time.sleep(POLL_INTERVAL)
-                continue
-            game_id,label,valid,extra=parse_latest_from_api(data)
-            if not valid or not label:
-                time.sleep(POLL_INTERVAL)
-                continue
-            if game_id==LAST_GAME_ID:
-                time.sleep(POLL_INTERVAL)
-                continue
-            LAST_GAME_ID=game_id
+            data = requests.get(API_URL, timeout=10).json()
+            gid, label, scores = parse_result(data)
+            if not gid or not label or gid == LAST_GAME_ID:
+                time.sleep(POLL_INTERVAL); continue
+            LAST_GAME_ID = gid
             HISTORY.append(label)
-            if ACTIVE_PLAN and not ACTIVE_PLAN.completed:
-                settle_plan(ACTIVE_PLAN,HISTORY,extra)
-            if not ACTIVE_PLAN or ACTIVE_PLAN.completed:
-                sinais=gerar_todas_estrategias(HISTORY,extra)
+
+            # Resolve plano ativo
+            if ACTIVE_PLAN and not ACTIVE_PLAN["done"]:
+                if label == ACTIVE_PLAN["sug"] or label == "T":
+                    result = "win" if label == ACTIVE_PLAN["sug"] else "tie"
+                    txt = f"{'EMPATE' if result=='tie' else 'WIN DO CLEVER BOT'}\nResultado: {scores['p']} | {scores['b']}\nGale: {ACTIVE_PLAN['gale']}"
+                    tg_send(txt)
+                    events_24h.append({"res": result})
+                    ACTIVE_PLAN = None
+                    for mid in GALE_MSG_IDS: tg_delete(mid)
+                    GALE_MSG_IDS.clear()
+                    schedule_delete(tg_send(placar()))
+                else:
+                    if ACTIVE_PLAN["gale"] < 2:
+                        ACTIVE_PLAN["gale"] += 1
+                        mid = tg_send(f"GALÉ {ACTIVE_PLAN['gale']} {'PLAYER' if ACTIVE_PLAN['sug']=='P' else 'BANKER'}")
+                        GALE_MSG_IDS.append(mid)
+                    else:
+                        tg_send(f"LOSS\nResultado: {scores['p']} | {scores['b']}\nGale: 2")
+                        events_24h.append({"res": "loss"})
+                        ACTIVE_PLAN = None
+                        for mid in GALE_MSG_IDS: tg_delete(mid)
+                        GALE_MSG_IDS.clear()
+                        schedule_delete(tg_send(placar()))
+
+            # Novo sinal
+            if not ACTIVE_PLAN:
+                sinais = estrategias(HISTORY, scores)
                 if sinais:
-                    padrao,sugestao=sinais[0]
-                    ACTIVE_PLAN=Plan(padrao,sugestao)
-                    announce_plan(padrao,sugestao)
+                    padrao, sug = sinais[0]
+                    ACTIVE_PLAN = {"sug": sug, "gale": 0, "done": False}
+                    tg_send(f"ANÁLISE ENVIADA\nESTRATÉGIA: {padrao}\nENTRADA: {signal_text(sug)}")
+
             time.sleep(POLL_INTERVAL)
-        except Exception as e:
-            log(f"Erro no loop principal: {e}")
-            log(traceback.format_exc())
+        except: 
             time.sleep(POLL_INTERVAL)
 
-if __name__=="__main__":
-    main_loop()
-        
-    
+# ============= WEBHOOK =============
+@app.route('/', methods=['GET', 'HEAD'])
+def index():
+    return "Clever Bac Bo rodando!", 200
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    return "ok", 200
+
+if __name__ == "__main__":
+    threading.Thread(target=background_loop, daemon=True).start()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
