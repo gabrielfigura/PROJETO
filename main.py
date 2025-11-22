@@ -1,306 +1,398 @@
-import asyncio
-import aiohttp
-import logging
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CallbackQueryHandler
-from telegram.error import TelegramError
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from collections import Counter
-import uuid
+import os
+import time
+import json
+import csv
+import threading
+import traceback
+from collections import deque, Counter
+from datetime import datetime, timedelta, timezone
+import requests
 
-# Configurações do Bot (valores fixos para teste)
-BOT_TOKEN = "8163319902:AAHE9LZ984JCIc-Lezl4WXR2FsGHPEFTxRQ"
-CHAT_ID = "-1002597090660"
+# ---------------- CONFIG ----------------
+TELEGRAM_TOKEN = "8163319902:AAHE9LZ984JCIc-Lezl4WXR2FsGHPEFTxRQ"  # seu token aqui
+CHAT_ID = "-1002597090660"         # seu chat_id aqui
 API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
+POLL_INTERVAL = 1.5
+DELETE_ANALYSIS_AFTER = 60
+HISTORY_MAX = 800
+EVENTS_FILE = "events_24h.json"
+CSV_LOG = "history_log.csv"
+USER_AGENT = "Mozilla/5.0 (compatible; CleverBot/1.0)"
+MAX_LOSSES = 10  # Zerar placar após 10 losses consecutivos
 
-# Inicializar o bot e a aplicação
-bot = Bot(token=BOT_TOKEN)
-application = Application.builder().token(BOT_TOKEN).build()
+# ---------------- STATE ----------------
+HISTORY = deque(maxlen=HISTORY_MAX)
+ACTIVE_PLAN = None
+LAST_GAME_ID = None
+GALE_MSG_IDS = []
+CONSECUTIVE_LOSSES = 0
 
-# Configuração de logging
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+# ---------------- UTIL ----------------
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
-# Histórico e estado
-historico = []
-empates_historico = []
-ultimo_padrao_id = None
-ultimo_resultado_id = None
-sinais_ativos = []
-placar = {
-    "ganhos_seguidos": 0,
-    "losses": 0,
-    "empates": 0
-}
-rodadas_desde_erro = 0
-ultima_mensagem_monitoramento = None
-detecao_pausada = False
-aguardando_validacao = False
+def log(msg):
+    print(f"[{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
-# Mapeamento de outcomes para emojis
-OUTCOME_MAP = {
-    "PlayerWon": "🔵",
-    "BankerWon": "🔴",
-    "Tie": "🟡"
-}
+# ---------------- PERSISTÊNCIA ----------------
+events = []
 
-# Padrões (corrigido ID duplicado)
-PADROES = [
-    { "id": 7, "sequencia": ["🔴", "🔵", "🔴", "🔵", "🔴", "🔵"], "sinal": "🔴" },
-    { "id": 8, "sequencia": ["🔵", "🔴", "🔵", "🔴", "🔵", "🔴"], "sinal": "🔵" },
-    { "id": 9, "sequencia": ["🔴", "🔴", "🔴", "🔵", "🔵", "🔵", "🔴", "🔴", "🔴"], "sinal": "🔵" },
-    { "id": 12, "sequencia": ["🔵", "🔵", "🔵", "🔴", "🔴", "🔴", "🔵", "🔵", "🔵"], "sinal": "🔴" },
-]
-
-@retry(stop=stop_after_attempt(7), wait=wait_exponential(multiplier=1, min=4, max=60), retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError)))
-async def fetch_resultado():
-    """Busca o resultado mais recente da API com retry e timeout aumentado."""
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(API_URL, timeout=aiohttp.ClientTimeout(total=30)) as response:
-                if response.status != 200:
-                    return None, None, None, None
-                data = await response.json()
-                if 'data' not in data or 'result' not in data['data'] or 'outcome' not in data['data']['result']:
-                    return None, None, None, None
-                if 'id' not in data:
-                    return None, None, None, None
-                if data['data'].get('status') != 'Resolved':
-                    return None, None, None, None
-                resultado_id = data['id']
-                outcome = data['data']['result']['outcome']
-                player_score = data['data']['result'].get('playerDice', {}).get('score', 0)
-                banker_score = data['data']['result'].get('bankerDice', {}).get('score', 0)
-                if outcome not in OUTCOME_MAP:
-                    return None, None, None, None
-                resultado = OUTCOME_MAP[outcome]
-                return resultado, resultado_id, player_score, banker_score
-        except:
-            return None, None, None, None
-
-def verificar_tendencia(historico, sinal, tamanho_janela=8):
-    if len(historico) < tamanho_janela:
-        return True
-    janela = historico[-tamanho_janela:]
-    contagem = Counter(janela)
-    total = contagem["🔴"] + contagem["🔵"]
-    if total == 0:
-        return True
-    return True
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_sinal(sinal, padrao_id, resultado_id, sequencia):
-    global ultima_mensagem_monitoramento, aguardando_validacao
+def load_events():
+    global events
     try:
-        if ultima_mensagem_monitoramento:
-            try:
-                await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_monitoramento)
-            except TelegramError:
-                pass
-            ultima_mensagem_monitoramento = None
-        if aguardando_validacao or sinais_ativos:
-            logging.info(f"Sinal bloqueado: aguardando validação ou sinal ativo (ID: {padrao_id})")
-            return False
-        sequencia_str = " ".join(sequencia)
-        mensagem = f"""💡 CLEVER ANALISOU 💡
-🧠 APOSTA EM: {sinal}
-🛡️ Proteja o TIE 🟡
-🤑 VAI ENTRAR DINHEIRO 🤑
-⬇️ENTRA NA COMUNIDADE DO WHATSAPP ⬇️
-https://chat.whatsapp.com/D61X4xCSDyk02srBHqBYXq"""
-        keyboard = [[InlineKeyboardButton("EMPATES 🟡", callback_data="mostrar_empates")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        message = await bot.send_message(chat_id=CHAT_ID, text=mensagem, reply_markup=reply_markup)
-        sinais_ativos.append({
-            "sinal": sinal,
-            "padrao_id": padrao_id,
-            "resultado_id": resultado_id,
-            "sequencia": sequencia,
-            "enviado_em": asyncio.get_event_loop().time()
-        })
-        aguardando_validacao = True
-        logging.info(f"Sinal enviado para padrão {padrao_id}: {sinal}")
-        return message.message_id
-    except TelegramError as e:
-        logging.error(f"Erro ao enviar sinal: {e}")
-        raise
+        with open(EVENTS_FILE, "r", encoding="utf-8") as f:
+            events = json.load(f)
+    except Exception:
+        events = []
+    prune_events()
 
-async def mostrar_empates(update, context):
-    """Handler para o botão EMPATES 🟡"""
+def save_events():
     try:
-        if not empates_historico:
-            await update.callback_query.answer("Nenhum empate registrado ainda.")
-            return
-        empates_str = "\n".join([f"Empate {i+1}: 🟡 (🔵 {e['player_score']} x 🔴 {e['banker_score']})" for i, e in enumerate(empates_historico)])
-        mensagem = f"📊 Histórico de Empates 🟡\n\n{empates_str}"
-        await update.callback_query.message.reply_text(mensagem)
-        await update.callback_query.answer()
-    except TelegramError as e:
-        logging.error(f"Erro ao mostrar empates: {e}")
-        await update.callback_query.answer("Erro ao exibir empates.")
-
-async def resetar_placar():
-    global placar
-    placar = {
-        "ganhos_seguidos": 0,
-        "losses": 0,
-        "empates": 0
-    }
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text="🔄 Placar resetado após 10 erros! Começando do zero.")
-        await enviar_placar()
-    except TelegramError:
-        pass
-
-async def enviar_placar():
-    try:
-        total_acertos = placar['ganhos_seguidos'] + placar['empates']
-        total_sinais = total_acertos + placar['losses']
-        precisao = (total_acertos / total_sinais * 100) if total_sinais > 0 else 0.0
-        precisao = min(precisao, 100.0)
-        mensagem_placar = f"""🚀 CLEVER PERFORMANCE 🚀
-✅ACERTOS SEM GALE: {placar['ganhos_seguidos']}
-🟡EMPATES: {placar['empates']}
-🎯TOTAL ACERTOS: {total_acertos}
-❌ERROS: {placar['losses']}
-🔥PRECISÃO: {precisao:.2f}%"""
-        await bot.send_message(chat_id=CHAT_ID, text=mensagem_placar)
-    except TelegramError:
-        pass
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_resultado(resultado, player_score, banker_score, resultado_id):
-    global rodadas_desde_erro, ultima_mensagem_monitoramento, detecao_pausada, placar, ultimo_padrao_id, aguardando_validacao, empates_historico
-    try:
-        if resultado == "🟡":
-            empates_historico.append({"player_score": player_score, "banker_score": banker_score})
-            if len(empates_historico) > 50:
-                empates_historico.pop(0)
-        for sinal_ativo in sinais_ativos[:]:
-            if sinal_ativo["resultado_id"] != resultado_id:
-                if resultado == sinal_ativo["sinal"] or resultado == "🟡":
-                    if resultado == "🟡":
-                        placar["empates"] += 1
-                    else:
-                        placar["ganhos_seguidos"] += 1
-                    mensagem_validacao = f"🤡ENTROU DINHEIRO🤡\n🎲 Resultado: 🔵 {player_score} x 🔴 {banker_score}"
-                    await bot.send_message(chat_id=CHAT_ID, text=mensagem_validacao)
-                    await enviar_placar()
-                    ultimo_padrao_id = None
-                    aguardando_validacao = False
-                    sinais_ativos.remove(sinal_ativo)
-                    detecao_pausada = False
-                    logging.info(f"Sinal validado com sucesso para padrão {sinal_ativo['padrao_id']}")
-                else:
-                    placar["losses"] += 1
-                    await bot.send_message(chat_id=CHAT_ID, text="❌ NÃO FOI DESSA❌")
-                    await enviar_placar()
-                    if placar["losses"] >= 10:
-                        await resetar_placar()
-                    ultimo_padrao_id = None
-                    aguardando_validacao = False
-                    sinais_ativos.remove(sinal_ativo)
-                    detecao_pausada = False
-                    logging.info(f"Sinal perdido para padrão {sinal_ativo['padrao_id']}, validação liberada")
-                ultima_mensagem_monitoramento = None
-            elif asyncio.get_event_loop().time() - sinal_ativo["enviado_em"] > 300:
-                ultimo_padrao_id = None
-                aguardando_validacao = False
-                sinais_ativos.remove(sinal_ativo)
-                detecao_pausada = False
-                logging.info(f"Sinal expirado para padrão {sinal_ativo['padrao_id']}, validação liberada")
-        if not sinais_ativos:
-            aguardando_validacao = False
-    except TelegramError:
-        pass
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_monitoramento():
-    global ultima_mensagem_monitoramento
-    while True:
-        try:
-            if not sinais_ativos:
-                if ultima_mensagem_monitoramento:
-                    try:
-                        await bot.delete_message(chat_id=CHAT_ID, message_id=ultima_mensagem_monitoramento)
-                    except TelegramError:
-                        pass
-                message = await bot.send_message(chat_id=CHAT_ID, text="🔎MONITORANDO A MESA…")
-                ultima_mensagem_monitoramento = message.message_id
-            await asyncio.sleep(15)
-        except TelegramError:
-            await asyncio.sleep(15)
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), retry=retry_if_exception_type(TelegramError))
-async def enviar_relatorio():
-    while True:
-        try:
-            total_acertos = placar['ganhos_seguidos'] + placar['empates']
-            total_sinais = total_acertos + placar['losses']
-            precisao = (total_acertos / total_sinais * 100) if total_sinais > 0 else 0.0
-            precisao = min(precisao, 100.0)
-            msg = f"""🚀 CLEVER PERFORMANCE 🚀
-✅ACERTOS SEM GALE: {placar['ganhos_seguidos']}
-🟡EMPATES: {placar['empates']}
-🎯TOTAL ACERTOS: {total_acertos}
-❌ERROS: {placar['losses']}
-🔥PRECISÃO: {precisao:.2f}%"""
-            await bot.send_message(chat_id=CHAT_ID, text=msg)
-        except TelegramError:
-            pass
-        await asyncio.sleep(3600)
-
-async def enviar_erro_telegram(erro_msg):
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text=f"❌ Erro detectado: {erro_msg}")
-    except TelegramError:
-        pass
-
-async def main():
-    global historico, ultimo_padrao_id, ultimo_resultado_id, rodadas_desde_erro, detecao_pausada, aguardando_validacao
-    application.add_handler(CallbackQueryHandler(mostrar_empates, pattern="mostrar_empates"))
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    asyncio.create_task(enviar_relatorio())
-    asyncio.create_task(enviar_monitoramento())
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text="🚀 Bot iniciado com sucesso!")
-    except TelegramError:
-        pass
-    while True:
-        try:
-            resultado, resultado_id, player_score, banker_score = await fetch_resultado()
-            if not resultado or not resultado_id:
-                await asyncio.sleep(2)
-                continue
-            if resultado_id == ultimo_resultado_id:
-                await asyncio.sleep(2)
-                continue
-            ultimo_resultado_id = resultado_id
-            historico.append(resultado)
-            if len(historico) > 50:
-                historico.pop(0)
-            await enviar_resultado(resultado, player_score, banker_score, resultado_id)
-            if not detecao_pausada and not aguardando_validacao and not sinais_ativos:
-                for padrao in PADROES:
-                    seq_len = len(padrao["sequencia"])
-                    if len(historico) >= seq_len:
-                        if historico[-seq_len:] == padrao["sequencia"] and padrao["id"] != ultimo_padrao_id:
-                            if verificar_tendencia(historico, padrao["sinal"]):
-                                enviado = await enviar_sinal(padrao["sinal"], padrao["id"], resultado_id, padrao["sequencia"])
-                                if enviado:
-                                    ultimo_padrao_id = padrao["id"]
-                                    break
-            await asyncio.sleep(2)
-        except Exception as e:
-            await enviar_erro_telegram(str(e))
-            await asyncio.sleep(5)
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logging.info("Bot encerrado pelo usuário")
+        with open(EVENTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(events, f)
     except Exception as e:
-        logging.error(f"Erro fatal no bot: {e}")
-        asyncio.run(enviar_erro_telegram(f"Erro fatal no bot: {e}"))
+        log(f"Erro ao salvar events: {e}")
+
+def prune_events():
+    global events
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    events = [e for e in events if datetime.fromisoformat(e["ts"]) >= cutoff]
+    save_events()
+
+def append_event(outcome, padrao, sugestao, gale, game_id=None, details=None):
+    global events, CONSECUTIVE_LOSSES
+    events.append({
+        "ts": now_iso(),
+        "outcome": outcome,
+        "padrao": padrao,
+        "sugestao": sugestao,
+        "gale": gale,
+        "game_id": game_id,
+        "details": details or {}
+    })
+    prune_events()
+    try:
+        header = not os.path.exists(CSV_LOG)
+        with open(CSV_LOG, "a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            if header:
+                w.writerow(["ts", "outcome", "padrao", "sugestao", "gale", "game_id", "details"])
+            w.writerow([now_iso(), outcome, padrao, sugestao, gale, game_id or "", json.dumps(details or {})])
+    except Exception as e:
+        log(f"Erro append_event CSV: {e}")
+    
+    # Atualiza losses consecutivos
+    if outcome == "loss":
+        CONSECUTIVE_LOSSES += 1
+    else:
+        CONSECUTIVE_LOSSES = 0
+
+# ---------------- TELEGRAM ----------------
+def tg_send(text):
+    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN.strip() == "":
+        log("Telegram token vazio. Mensagem não enviada.")
+        return None
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    try:
+        r = requests.post(url, data={"chat_id": CHAT_ID, "text": text}, timeout=12)
+        if r.status_code == 200:
+            return r.json().get("result", {}).get("message_id")
+        else:
+            log(f"Telegram send error {r.status_code}: {r.text}")
+    except Exception as e:
+        log(f"Telegram send exception: {e}")
+    return None
+
+def tg_delete(message_id):
+    if not message_id:
+        return False
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteMessage"
+    try:
+        r = requests.post(url, data={"chat_id": CHAT_ID, "message_id": message_id}, timeout=8)
+        return r.status_code == 200
+    except Exception as e:
+        log(f"tg_delete exception: {e}")
+        return False
+
+def schedule_delete(msg_id, delay=60):
+    if not msg_id:
+        return
+    def job(mid, d):
+        time.sleep(d)
+        try:
+            tg_delete(mid)
+        except Exception:
+            pass
+    threading.Thread(target=job, args=(msg_id, delay), daemon=True).start()
+
+# ---------------- API ----------------
+def fetch_api():
+    headers = {"User-Agent": USER_AGENT}
+    try:
+r = requests.get(API_URL, headers=headers, timeout=12)
+        if r.status_code == 200:
+            return r.json()
+        else:
+            log(f"API HTTP {r.status_code}: {r.text if hasattr(r, 'text') else ''}")
+    except Exception as e:
+        log(f"API fetch exception: {e}")
+    return None
+
+def outcome_to_label(outcome_str):
+    if not outcome_str: return None
+    s = str(outcome_str).lower()
+    if "player" in s: return "P"
+    if "banker" in s: return "B"
+    if "tie" in s or "draw" in s or "empate" in s: return "T"
+    if s=="p": return "P"
+    if s=="b": return "B"
+    if s=="t": return "T"
+    return None
+
+def parse_latest_from_api(data):
+    try:
+        payload = data.get("data") or data
+        game_id = None
+        label = None
+        extra = {}
+        if isinstance(payload, dict):
+            game_id = payload.get("id") or payload.get("gameId") or payload.get("roundId")
+            result = payload.get("result") or (payload.get("game") or {}).get("result") or payload.get("outcome") or payload.get("winner")
+            if isinstance(result, dict):
+                outcome = result.get("outcome") or result.get("winner") or result.get("result")
+                label = outcome_to_label(outcome)
+                pl = result.get("playerDice") or result.get("player") or {}
+                bk = result.get("bankerDice") or result.get("banker") or {}
+                def get_score(obj):
+                    if not isinstance(obj, dict):
+                        return None
+                    for k in ("score","sum","total","points"):
+                        v = obj.get(k)
+                        if v is None: continue
+                        try: return int(v)
+                        except Exception:
+                            try: return int(str(v))
+                            except Exception: return None
+                    return None
+                extra["player_score"] = get_score(pl)
+                extra["banker_score"] = get_score(bk)
+                return game_id,label,True,extra
+        return game_id,label,False,{}
+    except Exception:
+        return None,None,False,{}
+
+# ---------------- ESTRATÉGIAS ----------------
+def oposto(c): return 'P' if c=='B' else 'B'
+
+def estrategia_repeticao(hist):
+    if len(hist)>=3 and hist[-1]==hist[-2]==hist[-3] and hist[-1] in ("P","B"): return ("𝘙𝘦𝘱𝘦𝘵𝘪𝘤𝘢𝘰 3x", hist[-1])
+    if len(hist)>=2 and hist[-1]==hist[-2] and hist[-1] in ("P","B"): return ("𝘙𝘦𝘱𝘦𝘵𝘪𝘤𝘢𝘰 2x", hist[-1])
+    return None
+
+def estrategia_alternancia_new(hist):
+    if len(hist)>=4:
+        last4 = hist[-4:]
+        if all(x in ("P","B") for x in last4) and last4[0]==last4[2] and last4[1]==last4[3] and last4[0]!=last4[1]:
+            return ("𝘈𝘭𝘵𝘦𝘳𝘯𝘢𝘯𝘤𝘪𝘢 𝘈𝘉𝘈𝘉", oposto(last4[-1]))
+    return None
+
+def estrategia_seq_empate(hist):
+    if len(hist)>=2 and hist[-2]=='T' and hist[-1] in ('P','B'): return ("𝘴𝘦𝘲𝘶𝘦𝘯𝘤𝘪𝘢 𝘥𝘦 𝘵𝘪𝘦", hist[-1])
+    return None
+
+def estrategia_ultima(hist):
+    if len(hist)>=1 and hist[-1] in ('P','B'): return ("𝘜𝘭𝘵𝘪𝘮𝘢 𝘷𝘦𝘯𝘤𝘦𝘥𝘰𝘳𝘢", hist[-1])
+    return None
+
+def estrategia_maj5(hist):
+    window = [x for x in list(hist)[-5:] if x in ('P','B')]
+    if len(window)>=3:
+        cnt = Counter(window)
+        most,_ = cnt.most_common(1)[0]
+        return ("𝘔𝘢𝘪𝘰𝘳𝘪𝘢5", most)
+    return None
+
+def estrategia_paridade(extra):
+    try:
+        ps = extra.get("player_score")
+        bs = extra.get("banker_score")
+        if ps is None or bs is None: return None
+        if ps%2==1 and bs%2==0: return ("𝘗𝘢𝘳𝘪𝘋𝘦𝘋𝘢𝘥𝘰𝘴","P")
+        if bs%2==1 and ps%2==0: return ("𝘗𝘢𝘳𝘪𝘋𝘦𝘋𝘢𝘥𝘰𝘴","B")
+    except Exception: pass
+    return None
+
+def gerar_todas_estrategias(hist, extra=None):
+    sinais=[]
+    funcs=[estrategia_repeticao,estrategia_alternancia_new,estrategia_seq_empate,estrategia_ultima,estrategia_maj5]
+    seen=set()
+    uniq=[]
+    for f in funcs:
+        try:
+            res=f(hist)
+            if res and res[1] not in seen:
+                uniq.append(res)
+                seen.add(res[1])
+                except Exception: pass
+    res=estrategia_paridade(extra or {})
+    if res and res[1] not in seen: uniq.append(res)
+    return uniq
+
+# ---------------- MENSAGENS ----------------
+ANALYSE_TEXT="⬇️ 𝘚𝘐𝘕𝘈𝘓 𝘈𝘕𝘈𝘓𝘐𝘚𝘈𝘋𝘖 ⬇️"
+def signal_text(sug):
+    if sug=='P': return "🔵 JOGAR NO PLAYER\n🛡️ PROTEÇÃO EMPATE: 🟠"
+    if sug=='B': return "🔴 JOGAR NO BANKER\n🛡️ PROTEÇÃO EMPATE: 🟠"
+    if sug=='T': return "🚀 POSSÍVEL EMPATE 🟠"
+    return "💡JOGADA DETECTADA💡"
+
+def gale_text(n,s):
+    em="🔵" if s=='P' else ("🔴" if s=='B' else "🟡")
+    return f" 🔄 GALÉ {n}  {em}"
+
+# ---------------- PLACAR ----------------
+def compute_scoreboard():
+    global CONSECUTIVE_LOSSES
+    prune_events()
+    total = len(events)
+    wins_g0 = sum(1 for e in events if e['outcome'] == 'win' and e['gale'] == 0)
+    wins_g1 = sum(1 for e in events if e['outcome'] == 'win' and e['gale'] == 1)
+    wins_g2 = sum(1 for e in events if e['outcome'] == 'win' and e['gale'] == 2)
+    ties = sum(1 for e in events if e['outcome'] == 'tie')
+    losses = sum(1 for e in events if e['outcome'] == 'loss')
+    accuracy = ((wins_g0 + wins_g1 + wins_g2 + ties) / total * 100) if total else 0.0
+    max_streak = 0
+    cur = 0
+    for e in events:
+        if e['outcome'] in ('win', 'tie'):
+            cur += 1
+            max_streak = max(max_streak, cur)
+        else:
+            cur = 0
+    cur_streak = 0
+    for e in reversed(events):
+        if e['outcome'] in ('win', 'tie'):
+            cur_streak += 1
+        else:
+            break
+    # Zerar se 10 losses consecutivos
+    if CONSECUTIVE_LOSSES >= MAX_LOSSES:
+        CONSECUTIVE_LOSSES = 0
+        events.clear()
+        save_events()
+        total = wins_g0 = wins_g1 = wins_g2 = ties = losses = cur_streak = accuracy = 0
+    return {
+        "total": total,
+        "wins_g0": wins_g0,
+        "wins_g1": wins_g1,
+        "wins_g2": wins_g2,
+        "ties": ties,
+        "losses": losses,
+        "accuracy": accuracy,
+        "cur_streak": cur_streak
+    }
+
+def montar_painel_text():
+    s = compute_scoreboard()
+    return (
+        f"📊 CLEVER – PLACAR ATUAL\n\n"
+        f"🏅 G0: {s['wins_g0']}   |   G1: {s['wins_g1']}   |   G2: {s['wins_g2']}\n"
+        f"🛡️ EMPATES: {s['ties']}\n"
+        f"❌ LOSS: {s['losses']}\n\n"
+        f"🎯 ACERTIVIDADE: {s['accuracy']:.2f}%\n"
+        f"🔥 WINS SEGUIDOS: {s['cur_streak']}\n"
+        f"📉 TOTAL JOGADAS: {s['total']}\n"
+    )
+
+# ---------------- PLAN ----------------
+class Plan:
+    def __init__(self,padrao,sugestao):
+        self.padrao=padrao
+        self.sugestao=sugestao
+        self.gale=0
+        self.completed=False
+
+def announce_plan(padrao,sugestao):
+    return tg_send(f"{ANALYSE_TEXT}\n🎯 ESTRETEGIA: {padrao}\n👉 ENTRADA: {signal_text(sugestao)}")
+
+def post_result_and_stats(game_id,plan,extra,outcome):
+    gale = plan.gale
+    sug = plan.sugestao
+    padrao = plan.padrao
+    ps = extra.get("player_score", "?")
+    bs = extra.get("banker_score", "?")
+    if outcome=="win" or outcome=="tie":
+        texto = f"🤑 WIN DO CLEVER BOT\nResultado: 🔵 {ps} | 🔴 {bs}\nGale usado: {gale}"
+        if outcome=="tie":
+            texto = f"🟠 WIN NO EMPATE\nResultado: 🔵 {ps} | 🔴 {bs}\nGale usado: {gale}"
+    else:
+        texto = f"❌ LOSS\nResultado: 🔵 {ps} | 🔴 {bs}\nGale usado: {gale}"
+    tg_send(texto)
+    append_event(outcome,padrao,sug,gale,game_id,extra)
+    msg_placar = tg_send(montar_painel_text())
+    schedule_delete(msg_placar, delay=DELETE_ANALYSIS_AFTER)
+
+def settle_plan(plan,hist,extra):
+    global GALE_MSG_IDS
+    if not plan or plan.completed: return
+    last = hist[-1] if hist else None
+    sug = plan.sugestao
+    if last==sug or last=="T":
+        post_result_and_stats(None,plan,extra,"win" if last==sug else "tie")
+        for mid in GALE_MSG_IDS: tg_delete(mid)
+        GALE_MSG_IDS=[]
+        plan.completed=True
+    else:
+        if plan.gale==0:
+            plan.gale=1
+            mid = tg_send(gale_text(plan.gale, sug))
+            GALE_MSG_IDS.append(mid)
+        elif plan.gale==1:
+            plan.gale=2
+
+mid = tg_send(gale_text(plan.gale, sug))
+            GALE_MSG_IDS.append(mid)
+        else:
+            post_result_and_stats(None,plan,extra,"loss")
+            for mid in GALE_MSG_IDS: tg_delete(mid)
+            GALE_MSG_IDS=[]
+            plan.completed=True
+
+# ---------------- MAIN LOOP ----------------
+def main_loop():
+    global HISTORY, ACTIVE_PLAN, LAST_GAME_ID
+    load_events()
+    log("Iniciando CLEVER BOT...")
+    while True:
+        try:
+            data=fetch_api()
+            if not data:
+                time.sleep(POLL_INTERVAL)
+                continue
+            game_id,label,valid,extra=parse_latest_from_api(data)
+            if not valid or not label:
+                time.sleep(POLL_INTERVAL)
+                continue
+            if game_id==LAST_GAME_ID:
+                time.sleep(POLL_INTERVAL)
+                continue
+            LAST_GAME_ID=game_id
+            HISTORY.append(label)
+            if ACTIVE_PLAN and not ACTIVE_PLAN.completed:
+                settle_plan(ACTIVE_PLAN,HISTORY,extra)
+            if not ACTIVE_PLAN or ACTIVE_PLAN.completed:
+                sinais=gerar_todas_estrategias(HISTORY,extra)
+                if sinais:
+                    padrao,sugestao=sinais[0]
+                    ACTIVE_PLAN=Plan(padrao,sugestao)
+                    announce_plan(padrao,sugestao)
+            time.sleep(POLL_INTERVAL)
+        except Exception as e:
+            log(f"Erro no loop principal: {e}")
+            log(traceback.format_exc())
+            time.sleep(POLL_INTERVAL)
+
+if __name__=="__main__":
+    main_loop()
+        
+    
