@@ -4,12 +4,12 @@ import json
 import telebot
 from datetime import datetime
 import threading
-
+import os
 
 # ================= CONFIGURAÇÕES =================
-API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"  # API não oficial (funciona em 12/2025)
-TELEGRAM_TOKEN = "8163319902:AAHE9LZ984JCIc-Lezl4WXR2FsGHPEFTxRQ" # Bot feito no @BotFather
-CHAT_ID = "-1002597090660"        # ID do canal ou grupo Telegram
+API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"
+TELEGRAM_TOKEN = "8163319902:AAHE9LZ984JCIc-Lezl4WXR2FsGHPEFTxRQ"
+CHAT_ID = "-1002597090660"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -18,34 +18,70 @@ sem_gale = com_gale1 = com_gale2 = perdas = 0
 gale_ativo = 0
 ultimo_sinal = None
 historico = []
+ultimo_id_jogo = None  # Para detectar jogo novo com precisão
 
-def get_ultimos_resultados():
+# ============== ENVIA MENSAGEM QUANDO SOBE ==============
+def enviar_startup():
+    texto = f"""
+BOT BAC BO ONLINE E ATIVO!
+Iniciado com sucesso: {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}
+Monitorando Bac Bo 24 horas por dia
+Primeiro sinal sai em alguns segundos...
+    """
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        r = requests.get(API_URL, headers=headers, timeout=10)
+        bot.send_message(CHAT_ID, texto, parse_mode='HTML')
+        print("Mensagem de startup enviada!")
+    except Exception as e:
+        print("Erro ao enviar startup:", e)
+
+# ============== PEGAR RESULTADOS ==============
+def get_ultimos_resultados():
+    global ultimo_id_jogo
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/json',
+            'Referer': 'https://casinoscores.com/'
+        }
+        r = requests.get(API_URL, headers=headers, timeout=12)
         data = r.json()
+
         resultados = []
-        for jogo in data['results'][-20:]:  # últimos 20
+        novo_id = None
+
+        for jogo in data['results'][-25:]:
+            id_jogo = jogo.get('gameId') or jogo.get('roundId')
             player = jogo['playerTotal']
             banker = jogo['bankerTotal']
-            if player > banker:
-                resultados.append("P")
-            elif banker > player:
-                resultados.append("B")
-            else:
-                resultados.append("T")  # Tie = acerto
-        return resultados[::-1]  # mais antigo primeiro
-    except:
-        return historico[-20:] if historico else ["P","B","T","P","B"]
 
+            if player > banker:
+                resultados.append(("P", id_jogo))
+            elif banker > player:
+                resultados.append(("B", id_jogo))
+            else:
+                resultados.append(("T", id_jogo))
+
+            if novo_id is None:
+                novo_id = id_jogo
+
+        # Detecta novo jogo
+        if novo_id and novo_id != ultimo_id_jogo:
+            ultimo_id_jogo = novo_id
+
+        return [r[0] for r in resultados[::-1]]  # retorna só P/B/T, mais antigo primeiro
+
+    except Exception as e:
+        print("Erro na API:", e)
+        return historico[-20:] if historico else ["P", "B", "T", "P", "B"]
+
+# ============== ANÁLISE DE TENDÊNCIA ==============
 def analisar_tendencia():
     resultados = get_ultimos_resultados()
-    if len(resultados) < 8:
-        return None, "Aguardando mais dados..."
+    if len(resultados) < 10:
+        return None, "Aguardando histórico..."
 
-    # Estratégias profissionais reais
-    p_streak = b_streak = 0
     ultimo = resultados[-1]
+    p_streak = b_streak = 0
     for r in reversed(resultados):
         if r == ultimo:
             if ultimo == "P": p_streak += 1
@@ -53,137 +89,137 @@ def analisar_tendencia():
         else:
             break
 
-    # Choppiness Index (medir se está "choppy" ou em tendência)
-    range_14 = len(set(resultados[-14:]))
-    choppy = range_14 > 10
+    choppy = len(set(resultados[-14:])) > 9
 
-    # Estratégia combinada usada por high rollers
-    sinal = None
-    confianca = ""
-
-    # 1. Streak forte (4+ seguidos)
     if p_streak >= 4:
-        sinal = "B"
-        confianca = "Quebra de streak Player (4+)"
-    elif b_streak >= 4:
-        sinal = "P"
-        confianca = "Quebra de streak Banker (4+)"
-    
-    # 2. Chop alternado forte
-    elif "PBPB" in "".join(resultados[-8:]) or "BPBP" in "".join(resultados[-8:]):
-        sinal = ultimo  # seguir o chop
-        confianca = "Chop forte detectado - seguir último"
+        return "B", f"Quebra de streak PLAYER ({p_streak} seguidos)"
+    if b_streak >= 4:
+        return "P", f"Quebra de streak BANKER ({b_streak} seguidos)"
 
-    # 3. Após 3 alternados, esperar repetição
-    elif resultados[-3:] == ["P","B","P"]:
-        sinal = "B"
-        confianca = "Padrão PBP → próximo B"
-    elif resultados[-3:] == ["B","P","B"]:
-        sinal = "P"
-        confianca = "Padrão BPB → próximo P"
+    seq = "".join(resultados[-8:])
+    if "PBPBP" in seq or "BPBPB" in seq:
+        return ultimo, "Chop forte → seguir último"
 
-    # 4. Após 2 Ties seguidos → forte tendência
-    elif resultados[-2:] == ["T","T"]:
-        sinal = "P" if resultados[-3] == "B" else "B"
-        confianca = "Dois Ties → seguir oposto do anterior"
+    if resultados[-3:] == ["P", "B", "P"]:
+        return "B", "Padrão PBP → próximo B"
+    if resultados[-3:] == ["B", "P", "B"]:
+        return "P", "Padrão BPB → próximo P"
 
-    if sinal and sinal != "T":
-        return sinal, confianca
-    return None, "Sem sinal claro (evitando choppy)" if choppy else "Aguardando padrão forte"
+    if resultados[-2:] == ["T", "T"]:
+        return "P" if resultados[-3] == "B" else "B", "Dois Ties → oposto do anterior"
 
+    if choppy:
+        return None, "Muito choppy – sem sinal"
+
+    return ultimo, "Seguindo tendência atual"
+
+# ============== ENVIO DE SINAL ==============
 def enviar_sinal(sinal, motivo):
     global ultimo_sinal, gale_ativo
     ultimo_sinal = sinal
     gale_ativo = 0
 
     texto = f"""
-🎰 NOVO SINAL BAC BO 🎰
-⚡ Aposte agora → { 'PLAYER 🟦' if sinal == 'P' else 'BANKER 🟥' }
-📊 Motivo: {motivo}
-⏰ {datetime.now().strftime('%H:%M:%S')}
-🔥 Entre com força!
+NOVO SINAL BAC BO
+Aposte agora → {'PLAYER' if sinal == 'P' else 'BANKER'}
+Motivo: {motivo}
+{datetime.now().strftime('%H:%M:%S')}
+ENTRE AGORA!
     """
     bot.send_message(CHAT_ID, texto, parse_mode='HTML')
 
-def atualizar_placar(acertou, com_quant_gale):
+# ============== ATUALIZAR PLACAR ==============
+def atualizar_placar(acertou, gales_usados):
     global sem_gale, com_gale1, com_gale2, perdas
+
     if acertou:
-        if com_quant_gale == 0:
+        if gales_usados == 0:
             sem_gale += 1
-            status = "✅ ACERTO SEM GALE"
-        elif com_quant_gale == 1:
+            status = "ACERTO SEM GALE"
+        elif gales_usados == 1:
             com_gale1 += 1
-            status = "✅ RECUPEROU NO 1º GALE"
-        elif com_quant_gale == 2:
+            status = "RECUPEROU NO 1º GALE"
+        else:
             com_gale2 += 1
-            status = "⚡ RECUPEROU NO 2º GALE"
+            status = "RECUPEROU NO 2º GALE"
     else:
         perdas += 1
-        status = "❌ PERDA TOTAL (perdeu 2 gales)"
+        status = "PERDA TOTAL (2 gales perdidos)"
+
+    total = sem_gale + com_gale1 + com_gale2 + perdas
+    taxa = (sem_gale + com_gale1 + com_gale2) / total * 100 if total > 0 else 0
 
     placar = f"""
-📊 PLACAR ATUALIZADO - BAC BO BOT
-✅ Sem Gale: {sem_gale}
-✅ Com 1 Gale: {com_gale1}
-⚡ Com 2 Gale: {com_gale2}
-❌ Perdas: {perdas}
-💚 Taxa de Acerto (considerando gale): {((sem_gale + com_gale1 + com_gale2)/(sem_gale + com_gale1 + com_gale2 + perdas)*100):.1f}%
-💀 Perda real: {perdas}
+PLACAR ATUALIZADO
+Sem Gale: {sem_gale}
+Com 1 Gale: {com_gale1}
+Com 2 Gale: {com_gale2}
+Perdas: {perdas}
+Taxa de acerto: {taxa:.1f}%
     """
     bot.send_message(CHAT_ID, f"{status}\n{placar}", parse_mode='HTML')
 
+# ============== MONITORAMENTO ==============
 def monitorar():
-    global gale_ativo, ultimo_sinal, historico
+    global ultimo_sinal, gale_ativo, historico, ultimo_id_jogo
+
+    print("Monitoramento iniciado...")
+    time.sleep(5)
 
     while True:
         try:
             resultados = get_ultimos_resultados()
-            ultimo_resultado = resultados[-1]
-            historico = resultados
+            if len(resultados) > len(historico):
+                novo_resultado = resultados[-1]
+                historico = resultados
 
-            # Verificar se saiu o resultado do último sinal
-            if ultimo_sinal and len(historico) > len([h for h in historico if h != ultimo_resultado]):
-                # Resultado saiu!
-                acertou = (ultimo_resultado == ultimo_sinal or ultimo_resultado == "T")
-                
-                if acertou:
-                    atualizar_placar(True, gale_ativo)
-                    gale_ativo = 0
-                    ultimo_sinal = None
-                else:
-                    if gale_ativo < 2:
-                        gale_ativo += 1
-                        novo_sinal = ultimo_sinal
-                        bot.send_message(CHAT_ID, f"🔄 GALE {gale_ativo} → Continuar no { 'PLAYER 🟦' if novo_sinal=='P' else 'BANKER 🟥' }")
-                    else:
-                        atualizar_placar(False, 0)
-                        gale_ativo = 0
+                # Se tinha sinal pendente e saiu resultado novo
+                if ultimo_sinal:
+                    acertou = (novo_resultado in ("T", ultimo_sinal))
+
+                    if acertou:
+                        atualizar_placar(True, gale_ativo)
                         ultimo_sinal = None
+                        gale_ativo = 0
+                    else:
+                        if gale_ativo < 2:
+                            gale_ativo += 1
+                            bot.send_message(CHAT_ID, f"GALE {gale_ativo} → Continuar no {'PLAYER' if ultimo_sinal=='P' else 'BANKER'}")
+                        else:
+                            atualizar_placar(False, 0)
+                            ultimo_sinal = None
+                            gale_ativo = 0
 
-            # Gerar novo sinal apenas se não estiver em gale
-            if not ultimo_sinal:
+            # Só gera novo sinal se não estiver em gale
+            if not ultimo_sinal and len(historico) >= 10:
                 sinal, motivo = analisar_tendencia()
                 if sinal:
                     enviar_sinal(sinal, motivo)
 
-            time.sleep(8)  # Bac Bo roda a cada ~35-45s, verificamos a cada 8s
+            time.sleep(7)
 
         except Exception as e:
-            print("Erro:", e)
+            print("Erro no loop:", e)
             time.sleep(10)
 
-# Iniciar bot
+# ============== COMANDO /placar ==============
 @bot.message_handler(commands=['placar'])
 def placar_cmd(message):
-    placar = f"""
-📊 PLACAR BAC BO BOT
-✅ Sem Gale: {sem_gale}
-✅ Com 1 Gale: {com_gale1}
-⚡ Com 2 Gale: {com_gale2}
-❌ Perdas reais: {perdas}
+    total = sem_gale + com_gale1 + com_gale2 + perdas
+    taxa = (sem_gale + com_gale1 + com_gale2) / total * 100 if total > 0 else 0
+    texto = f"""
+PLACAR BAC BO BOT
+Sem Gale: {sem_gale}
+Com 1 Gale: {com_gale1}
+Com 2 Gale: {com_gale2}
+Perdas: {perdas}
+Taxa de acerto: {taxa:.1f}%
     """
-    bot.reply_to(message, placar)
+    bot.reply_to(message, texto)
 
-print("🤖 Bac Bo Signal Bot Iniciado!")
-threading.Thread(target=monitorar, daemon=True).start()
-bot.infinity_polling()
+# ============== INICIO ==============
+if __name__ == "__main__":
+    print("Iniciando Bac Bo Signal Bot...")
+    enviar_startup()  # <--- ESSA É A MENSAGEM QUE VOCÊ QUERIA
+    threading.Thread(target=monitorar, daemon=True).start()
+    bot.infinity_polling()
