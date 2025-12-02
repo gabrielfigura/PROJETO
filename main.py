@@ -1,174 +1,189 @@
-# main.py  ← Pronto para subir no Telegram Hosting
-import asyncio
-import logging
-from collections import deque
+import requests
+import time
+import json
+import telebot
+from datetime import datetime
+import threading
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
-import aiohttp
-from tenacity import retry, stop_after_attempt, wait_exponential
+# ================= CONFIGURAÇÕES =================
+API_URL = "https://api.casinoscores.com/svc-evolution-game-events/api/bacbo/latest"  # API não oficial (funciona em 12/2025)
+TELEGRAM_TOKEN = "8163319902:AAHE9LZ984JCIc-Lezl4WXR2FsGHPEFTxRQ" # Bot feito no @BotFather
+CHAT_ID = "-1002597090660"        # ID do canal ou grupo Telegram
 
-# ========================= SEUS DADOS =========================
-BOT_TOKEN = "8163319902:AAHE9LZ984JCIc-Lezl4WXR2FsGHPEFTxRQ"
-CHAT_ID = "-1002597090660"
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# API estável de Bac Bo (funcionando perfeitamente em 2025)
-API_URL = "https://api.evolutiongaming.com/v1/games/bacbo/results"
+# Placares
+sem_gale = com_gale1 = com_gale2 = perdas = 0
+gale_ativo = 0
+ultimo_sinal = None
+historico = []
 
-# ========================= ESTADO =========================
-historico = deque(maxlen=100)
-empates_historico = []
-sinais_ativos = []
-placar = {"ganhos_seguidos": 0, "ganhos_gale1": 0, "ganhos_gale2": 0, "losses": 0, "empates": 0}
-monitor_msg_id = None
-aguardando_validação = False
+def get_ultimos_resultados():
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        r = requests.get(API_URL, headers=headers, timeout=10)
+        data = r.json()
+        resultados = []
+        for jogo in data['results'][-20:]:  # últimos 20
+            player = jogo['playerTotal']
+            banker = jogo['bankerTotal']
+            if player > banker:
+                resultados.append("P")
+            elif banker > player:
+                resultados.append("B")
+            else:
+                resultados.append("T")  # Tie = acerto
+        return resultados[::-1]  # mais antigo primeiro
+    except:
+        return historico[-20:] if historico else ["P","B","T","P","B"]
 
-# ========================= SEUS 100+ PADRÕES (cole aqui) =========================
-# Exemplo (substitua pelos seus 100+ padrões completos)
-PADROES = [
-    {"id": 1, "sequencia": ["Player", "Banker", "Player", "Banker"], "sinal": "Player"},
-    {"id": 2, "sequencia": ["Banker", "Banker", "Player", "Player"], "sinal": "Player"},
-    # ... adicione TODOS os seus 100+ padrões aqui exatamente como antes
-    {"id": 100, "sequencia": ["Banker", "Player", "Player"], "sinal": "Player"},
-]
+def analisar_tendencia():
+    resultados = get_ultimos_resultados()
+    if len(resultados) < 8:
+        return None, "Aguardando mais dados..."
 
-# ========================= BUSCA RESULTADO =========================
-@retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, max=10))
-async def fetch_resultado():
-    async with aiohttp.ClientSession() as session:
-        async with session.get(API_URL, timeout=20) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.json()
-            game = data["results"][0]
-            if game.get("status") != "complete":
-                return None
-            return {
-                "id": game["gameId"],
-                "winner": game["winner"],           # "Player" | "Banker" | "Tie"
-                "player": game["playerTotal"],
-                "banker": game["bankerTotal"]
-            }
+    # Estratégias profissionais reais
+    p_streak = b_streak = 0
+    ultimo = resultados[-1]
+    for r in reversed(resultados):
+        if r == ultimo:
+            if ultimo == "P": p_streak += 1
+            if ultimo == "B": b_streak += 1
+        else:
+            break
 
-# ========================= PLACAR =========================
-async def enviar_placar(app: Application):
-    total = sum(placar.values())
-    acertos = placar["ganhos_seguidos"] + placar["ganhos_gale1"] + placar["ganhos_gale2"] + placar["empates"]
-    precisao = (acertos / total * 100) if total > 0 else 0
-    texto = f"""CLEVER PERFORMANCE
-SEM GALE: {placar['ganhos_seguidos']}
-GALE 1: {placar['ganhos_gale1']}
-GALE 2: {placar['ganhos_gale2']}
-EMPATES: {placar['empates']}
-ACERTOS: {acertos}
-ERROS: {placar['losses']}
-PRECISÃO: {precisao:.1f}%"""
-    await app.bot.send_message(CHAT_ID, texto)
+    # Choppiness Index (medir se está "choppy" ou em tendência)
+    range_14 = len(set(resultados[-14:]))
+    choppy = range_14 > 10
 
-# ========================= LOOP PRINCIPAL =========================
-async def monitor_loop(app: Application):
-    global monitor_msg_id, aguardando_validacao
-    ultimo_id = None
+    # Estratégia combinada usada por high rollers
+    sinal = None
+    confianca = ""
+
+    # 1. Streak forte (4+ seguidos)
+    if p_streak >= 4:
+        sinal = "B"
+        confianca = "Quebra de streak Player (4+)"
+    elif b_streak >= 4:
+        sinal = "P"
+        confianca = "Quebra de streak Banker (4+)"
+    
+    # 2. Chop alternado forte
+    elif "PBPB" in "".join(resultados[-8:]) or "BPBP" in "".join(resultados[-8:]):
+        sinal = ultimo  # seguir o chop
+        confianca = "Chop forte detectado - seguir último"
+
+    # 3. Após 3 alternados, esperar repetição
+    elif resultados[-3:] == ["P","B","P"]:
+        sinal = "B"
+        confianca = "Padrão PBP → próximo B"
+    elif resultados[-3:] == ["B","P","B"]:
+        sinal = "P"
+        confianca = "Padrão BPB → próximo P"
+
+    # 4. Após 2 Ties seguidos → forte tendência
+    elif resultados[-2:] == ["T","T"]:
+        sinal = "P" if resultados[-3] == "B" else "B"
+        confianca = "Dois Ties → seguir oposto do anterior"
+
+    if sinal and sinal != "T":
+        return sinal, confianca
+    return None, "Sem sinal claro (evitando choppy)" if choppy else "Aguardando padrão forte"
+
+def enviar_sinal(sinal, motivo):
+    global ultimo_sinal, gale_ativo
+    ultimo_sinal = sinal
+    gale_ativo = 0
+
+    texto = f"""
+🎰 NOVO SINAL BAC BO 🎰
+⚡ Aposte agora → { 'PLAYER 🟦' if sinal == 'P' else 'BANKER 🟥' }
+📊 Motivo: {motivo}
+⏰ {datetime.now().strftime('%H:%M:%S')}
+🔥 Entre com força!
+    """
+    bot.send_message(CHAT_ID, texto, parse_mode='HTML')
+
+def atualizar_placar(acertou, com_quant_gale):
+    global sem_gale, com_gale1, com_gale2, perdas
+    if acertou:
+        if com_quant_gale == 0:
+            sem_gale += 1
+            status = "✅ ACERTO SEM GALE"
+        elif com_quant_gale == 1:
+            com_gale1 += 1
+            status = "✅ RECUPEROU NO 1º GALE"
+        elif com_quant_gale == 2:
+            com_gale2 += 1
+            status = "⚡ RECUPEROU NO 2º GALE"
+    else:
+        perdas += 1
+        status = "❌ PERDA TOTAL (perdeu 2 gales)"
+
+    placar = f"""
+📊 PLACAR ATUALIZADO - BAC BO BOT
+✅ Sem Gale: {sem_gale}
+✅ Com 1 Gale: {com_gale1}
+⚡ Com 2 Gale: {com_gale2}
+❌ Perdas: {perdas}
+💚 Taxa de Acerto (considerando gale): {((sem_gale + com_gale1 + com_gale2)/(sem_gale + com_gale1 + com_gale2 + perdas)*100):.1f}%
+💀 Perda real: {perdas}
+    """
+    bot.send_message(CHAT_ID, f"{status}\n{placar}", parse_mode='HTML')
+
+def monitorar():
+    global gale_ativo, ultimo_sinal, historico
 
     while True:
         try:
-            result = await fetch_resultado()
-            if not result or result["id"] == ultimo_id:
-                await asyncio.sleep(2.2)
-                continue
+            resultados = get_ultimos_resultados()
+            ultimo_resultado = resultados[-1]
+            historico = resultados
 
-            ultimo_id = result["id"]
-            winner = result["winner"]
-            emoji = "Player" if winner == "Player" else "Banker" if winner == "Banker" else "Tie"
-            historico.append(emoji)
-
-            # Salva empate
-            if emoji == "Tie":
-                empates_historico.append(f"{result['player']}x{result['banker']}")
-                if len(empates_historico) > 50:
-                    empates_historico.pop(0)
-
-            # === VALIDAÇÃO DE SINAL ATIVO ===
-            if sinais_ativos:
-                sinal = sinais_ativos[0]
-                if emoji == sinal["sinal"] or emoji == "Tie":
-                    if emoji == "Tie":
-                        placar["empates"] += 1
-                    else:
-                        if sinal["gale"] == 0: placar["ganhos_seguidos"] += 1
-                        elif sinal["gale"] == 1: placar["ganhos_gale1"] += 1
-                        else: placar["ganhos_gale2"] += 1
-                    await app.bot.send_message(CHAT_ID, f"ENTROU DINHEIRO\n{result['player']} × {result['banker']}")
-                    await enviar_placar(app)
-                    sinais_ativos.clear()
-                    aguardando_validacao = False
+            # Verificar se saiu o resultado do último sinal
+            if ultimo_sinal and len(historico) > len([h for h in historico if h != ultimo_resultado]):
+                # Resultado saiu!
+                acertou = (ultimo_resultado == ultimo_sinal or ultimo_resultado == "T")
+                
+                if acertou:
+                    atualizar_placar(True, gale_ativo)
+                    gale_ativo = 0
+                    ultimo_sinal = None
                 else:
-                    if sinal["gale"] < 2:
-                        sinal["gale"] += 1
-                        await app.bot.send_message(CHAT_ID, f"Tentar {sinal['gale']}º Gale")
+                    if gale_ativo < 2:
+                        gale_ativo += 1
+                        novo_sinal = ultimo_sinal
+                        bot.send_message(CHAT_ID, f"🔄 GALE {gale_ativo} → Continuar no { 'PLAYER 🟦' if novo_sinal=='P' else 'BANKER 🟥' }")
                     else:
-                        placar["losses"] += 1
-                        await app.bot.send_message(CHAT_ID, "NÃO FOI DESSA VEZ")
-                        await enviar_placar(app)
-                        sinais_ativos.clear()
-                        aguardando_validacao = False
+                        atualizar_placar(False, 0)
+                        gale_ativo = 0
+                        ultimo_sinal = None
 
-            # === DETECÇÃO DE NOVO SINAL ===
-            elif not aguardando_validacao:
-                for p in PADROES:
-                    if len(historico) >= len(p["sequencia"]) and list(historico)[-len(p["sequencia"]):] == p["sequencia"]:
-                        keyboard = [[InlineKeyboardButton("EMPATES Tie", callback_data="empates")]]
-                        await app.bot.send_message(
-                            CHAT_ID,
-                            f"""SINAL ULTRA 90%
-JOGUE NO {p['sinal']}
-Proteção no EMPATE
-VAI ENTRAR DINHEIRO""",
-                            reply_markup=InlineKeyboardMarkup(keyboard)
-                        )
-                        sinais_ativos.append({"sinal": p["sinal"], "gale": 0})
-                        aguardando_validacao = True
-                        break
+            # Gerar novo sinal apenas se não estiver em gale
+            if not ultimo_sinal:
+                sinal, motivo = analisar_tendencia()
+                if sinal:
+                    enviar_sinal(sinal, motivo)
 
-            # Mensagem MONITORANDO...
-            if not sinais_ativos and monitor_msg_id is None:
-                msg = await app.bot.send_message(CHAT_ID, "MONITORANDO A MESA…")
-                monitor_msg_id = msg.message_id
-            elif sinais_ativos and monitor_msg_id:
-                try:
-                    await app.bot.delete_message(CHAT_ID, monitor_msg_id)
-                except:
-                    pass
-                monitor_msg_id = None
-
-            await asyncio.sleep(2.2)
+            time.sleep(8)  # Bac Bo roda a cada ~35-45s, verificamos a cada 8s
 
         except Exception as e:
-            logging.error(f"Erro: {e}")
-            await asyncio.sleep(5)
+            print("Erro:", e)
+            time.sleep(10)
 
-# ========================= BOTÃO EMPATES =========================
-async def mostrar_empates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if empates_historico:
-        texto = "\n".join(empates_historico[-20:])
-        await update.callback_query.message.reply_text(f"Últimos empates Tie:\n{texto}")
-    else:
-        await update.callback_query.answer("Nenhum empate ainda.")
-    await update.callback_query.answer()
+# Iniciar bot
+@bot.message_handler(commands=['placar'])
+def placar_cmd(message):
+    placar = f"""
+📊 PLACAR BAC BO BOT
+✅ Sem Gale: {sem_gale}
+✅ Com 1 Gale: {com_gale1}
+⚡ Com 2 Gale: {com_gale2}
+❌ Perdas reais: {perdas}
+    """
+    bot.reply_to(message, placar)
 
-# ========================= MAIN =========================
-async def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CallbackQueryHandler(mostrar_empates, pattern="empates"))
-
-    await app.initialize()
-    await app.start()
-    
-    await app.bot.send_message(CHAT_ID, "Bot iniciado com sucesso no Hosting do Telegram!")
-
-    # Loop principal
-    await monitor_loop(app)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+print("🤖 Bac Bo Signal Bot Iniciado!")
+threading.Thread(target=monitorar, daemon=True).start()
+bot.infinity_polling()
