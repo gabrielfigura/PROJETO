@@ -1,5 +1,3 @@
-Gale 1
-
 import asyncio
 import aiohttp
 import logging
